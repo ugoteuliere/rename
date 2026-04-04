@@ -30,6 +30,7 @@ jobs:
       shell: bash
       run: |
         cat << EOF > config.py
+        PATH="not_used_in_pytest"
         GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
         TMDB_API_KEY="${{ secrets.TMDB_API_KEY }}"
         MAIL="${{ secrets.MAIL }}"
