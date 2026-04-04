@@ -1,0 +1,17 @@
+# compiled
+__pycache__/
+*.py[cod]
+*$py.class
+tests/__pycache__/
+.pytest_cache/
+
+# env
+env/
+venv/
+.env/
+.venv/
+ENV/
+
+# others
+config.py
+log/

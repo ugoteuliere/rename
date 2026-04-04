@@ -1,0 +1,6 @@
+pandas
+requests
+parse-torrent-title
+rich
+pytest
+google-genai
