@@ -255,8 +255,14 @@ donnees_test_gemini_api = [(
 
 @pytest.mark.parametrize("media_info, expected", donnees_test_gemini_api)
 def test_gemini_api_call(media_info, expected):
-    resultat = api.gemini_api_call(media_info)
-    assert resultat == expected
+    try:
+        resultat = api.gemini_api_call(media_info)
+        assert resultat == expected
+    except Exception as e:
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            pytest.skip("Skipped: Gemini API daily quota exceeded (429 RESOURCE_EXHAUSTED).")
+        else:
+            raise
 
 donnees_wrong_test_gemini_api = [(
     {
