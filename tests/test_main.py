@@ -271,21 +271,35 @@ donnees_wrong_test_gemini_api = [(
 
 @pytest.mark.parametrize("media_info, expected", donnees_wrong_test_gemini_api)
 def test_error_gemini_api_call(media_info, expected):
-    resultat = api.gemini_api_call(media_info)
-    assert resultat == expected
+    try:
+        resultat = api.gemini_api_call(media_info)
+        assert resultat == expected
+    except Exception as e:
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            pytest.skip("Skipped: Gemini API daily quota exceeded (429 RESOURCE_EXHAUSTED).")
+        else:
+            raise
 
 def test_file_impossible_to_rename_and_mail():
     media_files = pd.DataFrame([{
-                    'File': "apjfpjkd.mkv",
-                    'Folder': ".download",
-                    'Path': "/home/ugo/movies/.download",
-                    'Clean': [None,None],
-                    'Parse': [None,None],
-                    'Media': "movie"
-                }])
-    corrected_filenames = files.get_corrected_media_filenames(media_files)
-    assert corrected_filenames.iloc[0]['Corrected'] == "Not found"
-    assert corrected_filenames.iloc[0]['Original'] == "apjfpjkd.mkv"
+        'File': "apjfpjkd.mkv",
+        'Folder': ".download",
+        'Path': "/home/ugo/movies/.download",
+        'Clean': [None,None],
+        'Parse': [None,None],
+        'Media': "movie"
+    }])
+    
+    try:
+        corrected_filenames = files.get_corrected_media_filenames(media_files)
+        assert corrected_filenames.iloc[0]['Corrected'] == "Not found"
+        assert corrected_filenames.iloc[0]['Original'] == "apjfpjkd.mkv"
+    except Exception as e:
+        # check if the error is the Gemini 429 Quota Exceeded error
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            pytest.skip("Skipped: Gemini API daily quota exceeded (429 RESOURCE_EXHAUSTED).")
+        else:
+            raise
 
 @pytest.mark.parametrize("file_name, expected_title, expected_year", [
     # --- 1. FILMS STANDARDS ---
