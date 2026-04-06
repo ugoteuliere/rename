@@ -120,7 +120,7 @@ def get_corrected_media_filenames(media_data_table):
                     gemini_title,gemini_year,gemini_lang,gemini_new_tags = gemini_api_call(file)
                 except Exception as e:
                     print_log("Gemini API called failed")
-                    sys.exit(1)
+                    raise e
 
                 success = True if gemini_title else False
                 if success: 
