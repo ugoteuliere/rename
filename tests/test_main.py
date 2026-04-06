@@ -80,16 +80,16 @@ fichiers_corriges = [
 ]
 
 donnees_test_api = [
-    ("Blade Runner 2049", 2017, "movie", ["Blade Runner 2049", "2017", "en"]),
-    ("Inception", 2010, "movie", ["Inception", "2010", "en"]),
-    ("Parasite", 2019, "movie", ["Parasite", "2019", "ko"]),
-    ("The Matrix", None, "movie", ["The Matrix", "1999", "en"]),
-    ("Spirited Away", 2001, "movie", ["Spirited Away", "2001", "ja"]),
-    ("Stranger Things", None, "tv", ["Stranger Things", "unkn", "en"]),
-    ("Breaking Bad", 2008, "tv", ["Breaking Bad", "unkn", "en"]),
-    ("Game of Thrones", None, "tv", ["Game of Thrones", "unkn", "en"]),
-    ("Dark", 2017, "tv", ["Dark", "unkn", "de"]),
-    ("Lupin", None, "tv", ["Lupin", "unkn", "fr"]),
+    ("Blade Runner 2049", 2017, "movie", [True,"Blade Runner 2049", "2017", "en"]),
+    ("Inception", 2010, "movie", [True,"Inception", "2010", "en"]),
+    ("Parasite", 2019, "movie", [True,"Parasite", "2019", "ko"]),
+    ("The Matrix", None, "movie", [True,"The Matrix", "1999", "en"]),
+    ("Spirited Away", 2001, "movie", [True,"Spirited Away", "2001", "ja"]),
+    ("Stranger Things", None, "tv", [True,"Stranger Things", "unkn", "en"]),
+    ("Breaking Bad", 2008, "tv", [True,"Breaking Bad", "unkn", "en"]),
+    ("Game of Thrones", None, "tv", [True,"Game of Thrones", "unkn", "en"]),
+    ("Dark", 2017, "tv", [True,"Dark", "unkn", "de"]),
+    ("Lupin", None, "tv", [True,"Lupin", "unkn", "fr"]),
 ]
 
 MOVIES_FOLDER_NAME = "Films"
@@ -178,7 +178,7 @@ def test_api_call_errors():
     name = "ezgshdgnfsdfshd"
     year = "None"
     media_type = "movie"
-    assert api.api_call(name, year, "en-US", media_type) == [None, None, None]
+    assert api.api_call(name, year, "en-US", media_type) == [False, None, None, None]
 
 def test_get_corrected_media_filenames(setup):
     media_files = files.search_media_files()
@@ -194,7 +194,7 @@ def test_get_corrected_media_filenames(setup):
 
 def test_rename_media_files(setup):
     media_files = files.search_media_files()
-    corrected_filenames = files.get_corrected_media_filenames(media_files)
+    corrected_filenames = utils.get_corrected_media_filenames(media_files)
     files.rename_media_files(corrected_filenames)
 
     # scan of the folder with corrected filenames
@@ -254,7 +254,7 @@ donnees_test_gemini_api = [(
         'Clean': "Blade Runner 2049 2160p HEVC",
         'Parse': None,
         'Media': "movie"
-    }, ["Blade Runner 2049", "2017", "en", ["2160p","HEVC"]])
+    }, [True, "Blade Runner 2049", "2017", "en", ["2160p","HEVC"]])
 ]
 
 @pytest.mark.parametrize("media_info, expected", donnees_test_gemini_api)
@@ -295,13 +295,13 @@ def test_file_impossible_to_rename_and_mail():
         'File': "apjfpjkd.mkv",
         'Folder': NOT_SORTED_MEDIA_FILES_FOLDER_NAME,
         'Path': f"/home/ugo/movies/{NOT_SORTED_MEDIA_FILES_FOLDER_NAME}",
-        'Clean': [None,None],
-        'Parse': [None,None],
+        'Clean': ["apjfpjkd",""],
+        'Parse': ["apjfpjkd",""],
         'Media': "movie"
     }])
     
     try:
-        corrected_filenames = files.get_corrected_media_filenames(media_files)
+        corrected_filenames = utils.get_corrected_media_filenames(media_files)
         assert corrected_filenames.iloc[0]['Corrected'] == "Not found"
         assert corrected_filenames.iloc[0]['Original'] == "apjfpjkd.mkv"
     except Exception as e:
@@ -324,14 +324,14 @@ def test_file_impossible_to_rename_and_mail():
     ("Spider-Man.Across.the.Spider-Verse.2023.2160p.UHD.BluRay.x265.10bit.HDR.TrueFrench.DTS-HD.7.1-FW.mkv", "Spider Man Across the Spider Verse", "2023"),
     
     # --- 2. SÉRIES TV (Ta fonction supprime actuellement le SxxExx) ---
-    ("Breaking.Bad.S01E01.Pilot.1080p.BluRay.x264.AC3.5.1.MULTI.VOSTFR-TV.mkv", "Breaking Bad Pilot", None), # S01E01 effacé, Pas d'année
-    ("Game.of.Thrones.S08E03.1080p.AMZN.WEB-DL.DDP5.1.x264.VFF-GRP.mkv", "Game of Thrones", None),
-    ("Stranger Things S04E01 2160p NF WEB-DL x265 10bit HDR DDP5.1 Atmos MULTI VF.mkv", "Stranger Things", None),
-    ("The.Boys.S03E06.Herogasm.1080p.WEB.H264.EAC3.5.1.VOSTFR-RLS.mkv", "The Boys Herogasm", None),
+    ("Breaking.Bad.S01E01.Pilot.1080p.BluRay.x264.AC3.5.1.MULTI.VOSTFR-TV.mkv", "Breaking Bad Pilot", ""), # S01E01 effacé, Pas d'année
+    ("Game.of.Thrones.S08E03.1080p.AMZN.WEB-DL.DDP5.1.x264.VFF-GRP.mkv", "Game of Thrones", ""),
+    ("Stranger Things S04E01 2160p NF WEB-DL x265 10bit HDR DDP5.1 Atmos MULTI VF.mkv", "Stranger Things", ""),
+    ("The.Boys.S03E06.Herogasm.1080p.WEB.H264.EAC3.5.1.VOSTFR-RLS.mkv", "The Boys Herogasm", ""),
     
     # --- 3. DÉJÀ PROPRES (Pour vérifier que la fonction ne casse rien) ---
     ("Arrival (2016).mkv", "Arrival", "2016"),
-    ("A Knight of the Seven Kingdoms S01E01.mkv", "A Knight of the Seven Kingdoms", None), # S01E01 sera effacé par ta regex
+    ("A Knight of the Seven Kingdoms S01E01.mkv", "A Knight of the Seven Kingdoms", ""), # S01E01 sera effacé par ta regex
     
     # Test de la suppression des URLs (http, https, www, .com, .fr, etc.)
     ("Super.Movie.2021.www.monsite.fr.1080p.mkv", "Super Movie", "2021"),
@@ -347,7 +347,7 @@ def test_file_impossible_to_rename_and_mail():
     ("Trop___de...points---et_tirets.2010.mkv", "Trop de points et tirets", "2010"),
 ])
 def test_clean_function(file_name, expected_title, expected_year):
-    result_title, result_year = files.clean_filename(file_name)
+    result_title, result_year = utils.clean_filename(file_name)
     assert result_title == expected_title, f"Error on the title of the file: {file_name}"
     assert result_year == expected_year, f"Error on the year of the file: {file_name}"
 
