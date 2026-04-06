@@ -1,7 +1,7 @@
 # This workflow will install Python dependencies, run tests and lint with a single version of Python
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: Rename
+name: CI and SonarQube Analysis
 
 on:
   push:
@@ -13,7 +13,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  test:
+    name: Run Tests
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
@@ -43,6 +44,37 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-    - name: Test with pytest
+
+    - name: Run Tests and Generate Coverage
       run: |
-        pytest
+        pytest --cov=src --cov-report=xml
+
+    # upload coverage file when os is ubuntu
+    - name: Upload coverage artifact
+      if: matrix.os == 'ubuntu-latest' 
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage.xml
+        include-hidden-files: true
+        retention-days: 1
+
+  sonarqube:
+    name: SonarQube Scan
+    needs: test 
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download coverage artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: coverage-report
+
+    - name: SonarQube Scan
+      uses: SonarSource/sonarqube-scan-action@v4
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

@@ -3,4 +3,5 @@ requests
 parse-torrent-title
 rich
 pytest
+pytest-cov
 google-genai
