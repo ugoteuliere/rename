@@ -116,7 +116,12 @@ def get_corrected_media_filenames(media_data_table):
                     if success:
                         new_file_name = tmdb_title_fr + ' (' + tmdb_year_fr + ')'
             else :
-                gemini_title,gemini_year,gemini_lang,gemini_new_tags = gemini_api_call(file)
+                try :
+                    gemini_title,gemini_year,gemini_lang,gemini_new_tags = gemini_api_call(file)
+                except Exception as e:
+                    print_log("Gemini API called failed")
+                    raise e
+
                 success = True if gemini_title else False
                 if success: 
                     new_file_name = gemini_title + ' (' + gemini_year + ')'
