@@ -92,12 +92,16 @@ donnees_test_api = [
     ("Lupin", None, "tv", ["Lupin", "unkn", "fr"]),
 ]
 
+MOVIES_FOLDER_NAME = "Films"
+TV_SHOWS_FOLDER_NAME = "Séries"
+NOT_SORTED_MEDIA_FILES_FOLDER_NAME = ".download"
+
 @pytest.fixture
 def setup(monkeypatch, tmp_path):
-    dossier_download = tmp_path / ".download"
+    dossier_download = tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER_NAME
     dossier_download.mkdir()
-    (tmp_path / "Films").mkdir()
-    (tmp_path / "Séries").mkdir()
+    (tmp_path / MOVIES_FOLDER_NAME).mkdir()
+    (tmp_path / TV_SHOWS_FOLDER_NAME).mkdir()
     
     monkeypatch.setattr("src.utils.PATH", str(tmp_path))
     monkeypatch.setattr("src.files.PATH", str(tmp_path))
@@ -122,9 +126,9 @@ def test_path_verification_with_correct_env(setup):
     assert result == 0
 
 def test_path_verification_1_must_exit_with_one(monkeypatch, tmp_path):
-    (tmp_path / ".download").mkdir()
-    (tmp_path / "Film").mkdir() # Faux nom exprès
-    (tmp_path / "Séries").mkdir()
+    (tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER_NAME).mkdir()
+    (tmp_path / f"{MOVIES_FOLDER_NAME}s").mkdir() # Faux nom exprès
+    (tmp_path / TV_SHOWS_FOLDER_NAME).mkdir()
 
     monkeypatch.setattr("src.utils.PATH", str(tmp_path))
 
@@ -134,9 +138,9 @@ def test_path_verification_1_must_exit_with_one(monkeypatch, tmp_path):
     assert e.value.code == 1
 
 def test_path_verification_2_must_exit_with_one(monkeypatch, tmp_path):
-    (tmp_path / ".download").mkdir()
-    (tmp_path / "Films").mkdir()
-    (tmp_path / "Séries").mkdir()
+    (tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER_NAME).mkdir()
+    (tmp_path / MOVIES_FOLDER_NAME).mkdir()
+    (tmp_path / TV_SHOWS_FOLDER_NAME).mkdir()
     (tmp_path / "Error").mkdir() # wrong folder
 
     monkeypatch.setattr("src.utils.PATH", str(tmp_path))
@@ -147,8 +151,8 @@ def test_path_verification_2_must_exit_with_one(monkeypatch, tmp_path):
     assert e.value.code == 1
 
 def test_path_verification_3_must_exit_with_one(monkeypatch, tmp_path):
-    (tmp_path / ".download").mkdir()
-    (tmp_path / "Film").mkdir() # missing folder
+    (tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER_NAME).mkdir()
+    (tmp_path / MOVIES_FOLDER_NAME).mkdir() # missing folder
 
     monkeypatch.setattr("src.utils.PATH", str(tmp_path))
 
@@ -164,21 +168,21 @@ def test_search_media_files(setup):
     check_parsed_media_type (media_files,"Arcane.S01E01.1080p.NF.WEBRip.DDP5.1.x264.MULTI.VF2-GRP.mkv","tv")
     check_parsed_media_type (media_files,"Everything.Everywhere.All.at.Once.2022.2160p.WEB-DL.x265.10bit.HDR.EAC3.5.1.VFF-TEAM.mkv","movie")
 
-@pytest.mark.parametrize("query, year, media_type, expected", donnees_test_api)
-def test_api_call(query, year, media_type, expected):
-    resultat = api.api_call(query, year, "en-US", media_type)
+@pytest.mark.parametrize("name, year, media_type, expected", donnees_test_api)
+def test_api_call(name, year, media_type, expected):
+    resultat = api.api_call(name, year, "en-US", media_type)
     assert resultat == expected
 
 def test_api_call_errors():
-    # test 2 : wrong query
-    query = "ezgshdgnfsdfshd"
+    # test 2 : wrong name
+    name = "ezgshdgnfsdfshd"
     year = "None"
     media_type = "movie"
-    assert api.api_call(query, year, "en-US", media_type) == [None, None, None]
+    assert api.api_call(name, year, "en-US", media_type) == [None, None, None]
 
 def test_get_corrected_media_filenames(setup):
     media_files = files.search_media_files()
-    corrected_filenames = files.get_corrected_media_filenames(media_files)
+    corrected_filenames = utils.get_corrected_media_filenames(media_files)
     for index,movie in corrected_filenames.iterrows():
         i = 0
         found = False
@@ -194,7 +198,7 @@ def test_rename_media_files(setup):
     files.rename_media_files(corrected_filenames)
 
     # scan of the folder with corrected filenames
-    target_dir = Path(".download")
+    target_dir = Path(NOT_SORTED_MEDIA_FILES_FOLDER_NAME)
     for file_path in target_dir.rglob('*'):
         corrected_name = file_path.stem.strip()
         if corrected_name not in ["Arrival (2016)", "A Knight of the Seven Kingdoms S01E01", "Suits S01E01"] :
@@ -245,8 +249,8 @@ def test_verify_arguments_invalid_exits(mock_args):
 donnees_test_gemini_api = [(
     {
         'File': "Blade.Runner.2049.2017.2160p.UHD.BluRay.Remux.HEVC.HDR.TrueHD.7.1.Atmos.VOSTFR-TEAM.mkv",
-        'Folder': ".download",
-        'Path': "/home/ugo/movies/.download",
+        'Folder': NOT_SORTED_MEDIA_FILES_FOLDER_NAME,
+        'Path': f"/home/ugo/movies/{NOT_SORTED_MEDIA_FILES_FOLDER_NAME}",
         'Clean': "Blade Runner 2049 2160p HEVC",
         'Parse': None,
         'Media': "movie"
@@ -267,8 +271,8 @@ def test_gemini_api_call(media_info, expected):
 donnees_wrong_test_gemini_api = [(
     {
         'File': "jkdvdqskldnvdsvsvsj.mkv",
-        'Folder': ".download",
-        'Path': "/home/ugo/movies/.download",
+        'Folder': NOT_SORTED_MEDIA_FILES_FOLDER_NAME,
+        'Path': f"/home/ugo/movies/{NOT_SORTED_MEDIA_FILES_FOLDER_NAME}",
         'Clean': "zinovikns,dl",
         'Parse': None,
         'Media': "movie"
@@ -289,8 +293,8 @@ def test_error_gemini_api_call(media_info, expected):
 def test_file_impossible_to_rename_and_mail():
     media_files = pd.DataFrame([{
         'File': "apjfpjkd.mkv",
-        'Folder': ".download",
-        'Path': "/home/ugo/movies/.download",
+        'Folder': NOT_SORTED_MEDIA_FILES_FOLDER_NAME,
+        'Path': f"/home/ugo/movies/{NOT_SORTED_MEDIA_FILES_FOLDER_NAME}",
         'Clean': [None,None],
         'Parse': [None,None],
         'Media': "movie"

@@ -35,6 +35,9 @@ jobs:
       run: |
         cat << EOF > config.py
         PATH="not_used_in_pytest"
+        MOVIES_FOLDER_NAME = "Films"
+        TV_SHOWS_FOLDER_NAME = "Séries"
+        NOT_SORTED_MEDIA_FILES_FOLDER_NAME = ".download"
         GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
         TMDB_API_KEY="${{ secrets.TMDB_API_KEY }}"
         MAIL="${{ secrets.MAIL }}"

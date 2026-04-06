@@ -11,7 +11,7 @@ def main():
 
     # find correct names and rename the files 
     try :
-        corrected_data_table = files.get_corrected_media_filenames(media_data_table)
+        corrected_data_table = utils.get_corrected_media_filenames(media_data_table)
     except Exception as e:
         ui.print_log(f" ❌ Correction of the filenames failed \n\n # Error : {e} \n\n")
         sys.exit(1)

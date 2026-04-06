@@ -60,7 +60,6 @@ def display_corrected_filenames(corrected_data_table):
         table_tv = Table(title="📺 [bold blue]TV Shows[/bold blue]", title_justify="left")
         
         table_tv.add_column("Original", style="white", no_wrap=True, max_width=40, overflow="ellipsis")
-        table_tv.add_column("Query", style="white", no_wrap=True, max_width=40, overflow="ellipsis")
         table_tv.add_column("Season", justify="center", style="yellow")
         table_tv.add_column("Épisode", justify="center", style="yellow")
         table_tv.add_column("Corrected", style="green", no_wrap=True, max_width=40, overflow="ellipsis")
@@ -68,7 +67,6 @@ def display_corrected_filenames(corrected_data_table):
         for _, row in tv_shows_df.iterrows():
             table_tv.add_row(
                 str(row['Original']), 
-                str(row['Query']),
                 str(row['Season']), 
                 str(row['Episode']), 
                 str(row['Corrected'])

@@ -21,6 +21,7 @@ def send_email(message):
 
     # send
     context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
 
     print_log("Connecting to server...")
     try:
