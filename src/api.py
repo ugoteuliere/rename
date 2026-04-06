@@ -91,7 +91,7 @@ def gemini_api_call(media_info):
         )
     except Exception as e:
         print_log(f" ❌ GEMINI API call failed \n\n # Error : {e} \n\n")
-        sys.exit(1)
+        raise e
 
     try:
         data = json.loads(response.text)
