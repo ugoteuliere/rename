@@ -2,7 +2,7 @@ import sys
 import pytest
 import pandas as pd
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, call
 from src import files, utils, api
 
 fichiers = [
@@ -434,3 +434,204 @@ def test_add_new_tags_errors(tmp_path, monkeypatch, capsys):
     
     # Le contenu doit être strictement identique
     assert valid_file.read_text(encoding="utf-8") == "TAGS = [r'1080p']"
+
+
+def test_move_file_success(tmp_path):
+    source_dir = tmp_path / "source"
+    dest_dir = tmp_path / "dest"
+    source_dir.mkdir()
+    dest_dir.mkdir()
+    
+    # create a fake file to move
+    old_path = source_dir / "video.mkv"
+    old_path.write_text("fake video content") 
+    new_path = dest_dir / "video.mkv"
+    
+    files.move_file(old_path, new_path)
+    assert not old_path.exists() # The original file should be gone
+    assert new_path.exists()     # The file should be in the new location
+    assert new_path.read_text() == "fake video content" # Data should be intact
+
+
+def test_move_file_raises_runtime_error(tmp_path):
+    # 1. SETUP
+    # These files don't actually need to exist for this test because we are going to force an error
+    old_path = tmp_path / "source.txt"
+    new_path = tmp_path / "dest.txt"
+    
+    # 2. ACTION & VERIFY
+    with patch('src.files.make_safe_path', side_effect=lambda x: str(x)):
+        
+        # We force shutil.move to crash with a fake PermissionError
+        with patch('shutil.move', side_effect=PermissionError("Access denied")):
+            
+            # We catch your custom RuntimeError
+            with pytest.raises(RuntimeError) as exc_info:
+                files.move_file(old_path, new_path)
+                
+    # 3. VERIFY ERROR MESSAGE
+    # We check that your custom formatting and the original error are both present
+    error_message = str(exc_info.value)
+    assert "Impossible to move the file" in error_message
+    assert str(old_path) in error_message
+    assert str(new_path) in error_message
+    assert "Access denied" in error_message
+
+
+def test_remove_empty_folders_path_does_not_exist(tmp_path):
+    # 1. SETUP
+    fake_path = tmp_path / "ghost_folder"
+    
+    # 2. ACTION & VERIFY
+    # We patch your ui.print_log so it doesn't actually print to the console during tests,
+    # and so we can check what message was sent to it.
+    with patch('src.ui.print_log') as mock_print:
+        files.remove_empty_folders(str(fake_path))
+        
+        # Verify the function caught the bad path and logged it
+        mock_print.assert_called_once()
+        assert "does not exist" in mock_print.call_args[0][0]
+
+
+def test_remove_empty_folders_success(tmp_path):
+    # 1. SETUP: Create a complex folder structure
+    target_path = tmp_path / "main_folder"
+    target_path.mkdir()
+    
+    # Folder A: Empty
+    empty_dir_1 = target_path / "empty_1"
+    empty_dir_1.mkdir()
+    
+    # Folder B: Contains a nested empty folder
+    empty_dir_2 = target_path / "empty_2"
+    empty_dir_2.mkdir()
+    nested_empty = empty_dir_2 / "nested_empty"
+    nested_empty.mkdir()
+    
+    # Folder C: Contains a file (Should NOT be deleted)
+    not_empty_dir = target_path / "keep_me"
+    not_empty_dir.mkdir()
+    (not_empty_dir / "video.mkv").write_text("fake video data")
+    
+    # 2. ACTION
+    files.remove_empty_folders(str(target_path))
+    
+    # 3. VERIFY
+    # The empty folders should be gone
+    assert not empty_dir_1.exists()
+    assert not nested_empty.exists()
+    assert not empty_dir_2.exists() # Because the nested one was deleted, this became empty and should also be gone!
+    
+    # The folder with the file should remain untouched
+    assert not_empty_dir.exists()
+    assert (not_empty_dir / "video.mkv").exists()
+    
+    # Crucially: The main target folder must survive!
+    assert target_path.exists()
+
+
+def test_remove_empty_folders_raises_runtime_error(tmp_path):
+    # 1. SETUP
+    target_path = tmp_path / "main"
+    target_path.mkdir()
+    empty_dir = target_path / "empty_dir"
+    empty_dir.mkdir()
+    
+    # 2. ACTION & VERIFY
+    # We force the built-in os.rmdir to fail with a fake OS error
+    with patch('os.rmdir', side_effect=OSError("Folder is locked by another process")):
+        
+        # We expect your custom RuntimeError to be raised
+        with pytest.raises(RuntimeError) as exc_info:
+            files.remove_empty_folders(str(target_path))
+            
+    # 3. VERIFY ERROR MESSAGE
+    error_msg = str(exc_info.value)
+    assert "An error occurred while deleting" in error_msg
+    assert str(empty_dir) in error_msg
+    assert "Folder is locked" in error_msg
+
+
+@patch('src.files.remove_empty_folders')
+@patch('src.ui.print_log')
+@patch('src.files.move_file')
+@patch('src.files.PATH', 'fake_root_dir') # Faking the global variable
+@patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER_NAME', 'unsorted_media') # Faking the global variable
+def test_move_media_files_success(mock_move_file, mock_print_log, mock_remove_empty_folders):
+    # 1. SETUP
+    # A list of fake paths to move
+    paths_to_move = [
+        ("path/to/old1.mkv", "path/to/new1.mkv"),
+        ("path/to/old2.mkv", "path/to/new2.mkv")
+    ]
+    
+    # 2. ACTION
+    files.move_media_files(paths_to_move)
+    
+    # 3. VERIFY
+    # Did it try to move exactly 2 files?
+    assert mock_move_file.call_count == 2
+    
+    # Did it call move_file with the exact right arguments in the right order?
+    expected_calls = [
+        call("path/to/old1.mkv", "path/to/new1.mkv"),
+        call("path/to/old2.mkv", "path/to/new2.mkv")
+    ]
+    mock_move_file.assert_has_calls(expected_calls)
+    
+    # Did it print the correct success message with the number '2'?
+    mock_print_log.assert_called_once()
+    assert "2 files have been successfully sorted" in mock_print_log.call_args[0][0]
+    
+    # Did it try to clean up the empty folders in the correct target directory?
+    expected_cleanup_path = Path('fake_root_dir') / 'unsorted_media'
+    mock_remove_empty_folders.assert_called_once_with(expected_cleanup_path)
+
+
+@patch('src.files.remove_empty_folders')
+@patch('src.ui.print_log')
+@patch('src.files.move_file')
+@patch('src.files.PATH', 'fake_root')
+@patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER_NAME', 'unsorted')
+def test_move_media_files_empty_list(mock_move_file, mock_print_log, mock_remove_empty_folders):
+    # 1. SETUP
+    paths_to_move = [] # Empty list!
+    
+    # 2. ACTION
+    files.move_media_files(paths_to_move)
+    
+    # 3. VERIFY
+    mock_move_file.assert_not_called() # Should not have tried to move anything
+    
+    mock_print_log.assert_called_once()
+    assert "0 files have been successfully sorted" in mock_print_log.call_args[0][0]
+    
+    mock_remove_empty_folders.assert_called_once() # Should still try to clean up the root folder
+
+
+@patch('src.files.remove_empty_folders')
+@patch('src.ui.print_log')
+@patch('src.files.move_file')
+@patch('src.files.PATH', 'fake_root')
+@patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER_NAME', 'unsorted')
+def test_move_media_files_stops_on_error(mock_move_file, mock_print_log, mock_remove_empty_folders):
+    # 1. SETUP
+    paths_to_move = [
+        ("old1", "new1"),
+        ("old2", "new2") # This one should never be reached
+    ]
+    
+    # We force the FIRST call to move_file to crash
+    mock_move_file.side_effect = RuntimeError("Fatal move error")
+    
+    # 2. ACTION & VERIFY
+    # The error should bubble up immediately
+    with pytest.raises(RuntimeError) as exc_info:
+        files.move_media_files(paths_to_move)
+        
+    assert "Fatal move error" in str(exc_info.value)
+    
+    # 3. VERIFY IT STOPPED
+    assert mock_move_file.call_count == 1 # It crashed on the first one and didn't try the second
+    mock_print_log.assert_not_called() # It should NOT print the success message
+    mock_remove_empty_folders.assert_not_called() # It should NOT run the cleanup

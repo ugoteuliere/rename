@@ -154,11 +154,14 @@ def remove_empty_folders(target_path):
         return
 
     for dirpath, dirnames, filenames in os.walk(target_path, topdown=False):
+        if dirpath == target_path:
+            continue
+            
         if not os.listdir(dirpath):
             try:
                 os.rmdir(dirpath)
             except OSError as e:
-                raise RuntimeError(f" ❌ Error: An error occured while deleting {dirpath} \n\n ⤷ Error logs : {e} \n")
+                raise RuntimeError(f" ❌ Error: An error occurred while deleting {dirpath} \n\n ⤷ Error logs : {e} \n")
 
 def move_media_files (paths):
     success_count = 0
