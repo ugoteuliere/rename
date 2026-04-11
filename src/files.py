@@ -46,6 +46,14 @@ def search_media_files():
     df = pd.DataFrame(media_data_table)
     return df
 
+def make_safe_path(path: Path) -> str:
+    path_str = str(path)
+
+    if path_str.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + path_str.lstrip("\\")
+    else:
+        return "\\\\?\\" + path_str
+
 def rename_media_files(corrected_data_table):
     renamed_count = 0
 
@@ -55,8 +63,7 @@ def rename_media_files(corrected_data_table):
             continue
             
         original_path = Path(str(row['Path'])).resolve()
-        magic_prefix = "\\\\?\\"
-        safe_old_path = f"{magic_prefix}{original_path}"
+        safe_old_path = make_safe_path(original_path)
         
         if not os.path.exists(safe_old_path):
             ui.print_log(f"Error (file does not exist) : {original_path.name[:30]}...")
@@ -66,7 +73,7 @@ def rename_media_files(corrected_data_table):
         new_filename = f"{row['Corrected']}{extension}"
         
         new_path = original_path.with_name(new_filename).resolve()
-        safe_new_path = f"{magic_prefix}{new_path}"
+        safe_new_path = make_safe_path(new_path)
         
         try:
             if safe_old_path == safe_new_path:
@@ -132,10 +139,9 @@ def sort_media_files(corrected_data_table):
 def move_file(old_path, new_path):
     old_abs = old_path.resolve()
     new_abs = new_path.resolve()
-    
-    magic_prefix = "\\\\?\\"
-    safe_old = f"{magic_prefix}{old_abs}"
-    safe_new = f"{magic_prefix}{new_abs}"
+
+    safe_old = make_safe_path(old_abs)
+    safe_new = make_safe_path(new_abs)
 
     try:
         shutil.move(safe_old, safe_new) 
