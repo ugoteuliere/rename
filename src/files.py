@@ -78,10 +78,10 @@ def rename_media_files(corrected_data_table):
             renamed_count += 1
             
         except Exception as e:
-            ui.print_log(f"❌ Error (impossible to rename) {original_path.name[:30]}... : {e}")
+            raise RuntimeError(f" ❌ Error: Impossible to rename {original_path.name[:30]}... \n\n ⤷ Error logs: {e} \n")
 
     if renamed_count == 0:
-        ui.print_log("\n❌ No files have been renamed.")
+        ui.print_log("\n ❌ No files have been renamed.")
     else:
         ui.print_log(f"\n🎉 Done ! {renamed_count}/{len(corrected_data_table)} file(s) have been successfully renamed.\n\n")
     
@@ -140,8 +140,7 @@ def move_file(old_path, new_path):
     try:
         shutil.move(safe_old, safe_new) 
     except Exception as e:
-        ui.print_log(f"❌ Error : impossible to move file \n\n # Error response : {e} \n\n # Old path {safe_old} \n\n # New path {safe_new}")
-        sys.exit(1)
+        raise RuntimeError(f" ❌ Error: Impossible to move the file \n Old path {safe_old} \n New path {safe_new} \n\n ⤷ Error logs : {e} \n")
 
 def remove_empty_folders(target_path):
     if not os.path.exists(target_path):
@@ -153,18 +152,13 @@ def remove_empty_folders(target_path):
             try:
                 os.rmdir(dirpath)
             except OSError as e:
-                ui.print_log(f"Error deleting {dirpath}: {e}")
-                sys.exit(1)
+                raise RuntimeError(f" ❌ Error: An error occured while deleting {dirpath} \n\n ⤷ Error logs : {e} \n")
 
 def move_media_files (paths):
     success_count = 0
     for old, new in paths:
-        try:
-            move_file(old, new)
-            success_count += 1
-        except Exception as e:
-            ui.print_log(f"❌ Error : impossible to move file \n\n # Error response : {e} \n\n # Old path {old} \n\n # New path {new}")
-            sys.exit(1)
+        move_file(old, new)
+        success_count += 1
             
     ui.print_log(f"\n✅ {success_count} files have been successfully sorted and moved!")
 

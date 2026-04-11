@@ -1,4 +1,3 @@
-import sys
 import json
 import requests
 import urllib.parse
@@ -25,8 +24,7 @@ def api_call(name, year, language, media_type):
     try :
         response = requests.get(url, headers=headers)
     except Exception as e:
-        print_log(f" ❌ API call failed \n\n # Error : {e} \n\n # Query : {name} {year}\n")
-        sys.exit(1)
+        raise RuntimeError(f" ❌ Error: TMDB API call failed \n Query : {name} {year}\n\n ⤷ Error logs: {e} \n")
     
     if response.status_code == 200:
         data = response.json()
@@ -90,8 +88,7 @@ def gemini_api_call(media_info):
             ),
         )
     except Exception as e:
-        print_log(f" ❌ GEMINI API call failed \n\n # Error : {e} \n\n")
-        raise e
+        raise RuntimeError(f" ❌ Error: GEMINI API call failed \n\n ⤷ Error logs: {e} \n")
 
     try:
         data = json.loads(response.text)
@@ -113,9 +110,9 @@ def gemini_api_call(media_info):
                 
             return [True, title, year, original_language, missing_tags]
         else:
-            print_log(" ❌ Gemini API call failed : impossible to read the json data from Gemini API\n")
+            print_log(" ❌ Error: Impossible to read the json data from Gemini API \n")
             
     except json.JSONDecodeError:
-        print_log(" ❌ Failed to parse Gemini response as JSON")
+        raise RuntimeError(" ❌ Error: Failed to parse Gemini response as JSON \n\n ⤷ Error logs: {e} \n")
         
     return [False, None, None, None, None]

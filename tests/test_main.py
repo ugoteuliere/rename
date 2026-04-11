@@ -1,11 +1,9 @@
-import os
 import sys
-import shutil
 import pytest
 import pandas as pd
 from pathlib import Path
 from unittest.mock import patch
-from src import ui, files, utils, api
+from src import files, utils, api
 
 fichiers = [
     # 30 files have to be corrected
@@ -262,9 +260,9 @@ def test_gemini_api_call(media_info, expected):
     try:
         resultat = api.gemini_api_call(media_info)
         assert resultat == expected
-    except Exception as e:
-        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-            pytest.skip("Skipped: Gemini API daily quota exceeded (429 RESOURCE_EXHAUSTED).")
+    except RuntimeError as e:
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "This model is currently experiencing high demand." in str(e):
+            pytest.skip("Skipped: Gemini API free plan limit reached (429 RESOURCE_EXHAUSTED).")
         else:
             raise
 
@@ -276,7 +274,7 @@ donnees_wrong_test_gemini_api = [(
         'Clean': "zinovikns,dl",
         'Parse': None,
         'Media': "movie"
-    }, [None, None, None, None])
+    }, [False, None, None, None, None])
 ]
 
 @pytest.mark.parametrize("media_info, expected", donnees_wrong_test_gemini_api)
@@ -284,9 +282,9 @@ def test_error_gemini_api_call(media_info, expected):
     try:
         resultat = api.gemini_api_call(media_info)
         assert resultat == expected
-    except Exception as e:
-        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-            pytest.skip("Skipped: Gemini API daily quota exceeded (429 RESOURCE_EXHAUSTED).")
+    except RuntimeError as e:
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "This model is currently experiencing high demand." in str(e):
+            pytest.skip("Skipped: Gemini API free plan limit reached (429 RESOURCE_EXHAUSTED).")
         else:
             raise
 
@@ -302,12 +300,11 @@ def test_file_impossible_to_rename_and_mail():
     
     try:
         corrected_filenames = utils.get_corrected_media_filenames(media_files)
-        assert corrected_filenames.iloc[0]['Corrected'] == "Not found"
+        assert corrected_filenames.iloc[0]['Corrected'] == None
         assert corrected_filenames.iloc[0]['Original'] == "apjfpjkd.mkv"
-    except Exception as e:
-        # check if the error is the Gemini 429 Quota Exceeded error
-        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-            pytest.skip("Skipped: Gemini API daily quota exceeded (429 RESOURCE_EXHAUSTED).")
+    except RuntimeError as e:
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "This model is currently experiencing high demand." in str(e):
+            pytest.skip("Skipped: Gemini API free plan limit reached (429 RESOURCE_EXHAUSTED).")
         else:
             raise
 
@@ -414,20 +411,17 @@ def test_add_new_tags_errors(tmp_path, monkeypatch, capsys):
     # --- Cas d'erreur A : Le fichier n'existe pas ---
     missing_file = tmp_path / "non_existent.py"
     monkeypatch.setattr(utils, "DATA_FILE", missing_file)
-    
-    # Ne doit pas crasher, mais faire un print d'erreur
-    utils.add_new_tags(["vostfr"])
-    captured = capsys.readouterr()
-    assert "Error : The fime" in captured.out
+    with pytest.raises(RuntimeError) as exc_info:
+        utils.add_new_tags(["vostfr"])
+    assert "The file" in str(exc_info.value)
     
     # --- Cas d'erreur B : Le fichier existe mais n'a pas de liste TAGS ---
     invalid_file = tmp_path / "invalid_data.py"
     invalid_file.write_text("UNE_AUTRE_LISTE = ['a', 'b']", encoding="utf-8")
     monkeypatch.setattr(utils, "DATA_FILE", invalid_file)
-    
     utils.add_new_tags(["vostfr"])
     captured = capsys.readouterr()
-    assert "Impossible de localiser la liste TAGS" in captured.out
+    assert "Impossible to find TAGS list" in captured.out
     
     # --- Cas d'erreur C : La liste fournie est vide ou None ---
     valid_file = tmp_path / "data.py"

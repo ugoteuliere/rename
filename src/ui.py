@@ -99,5 +99,5 @@ def user_confirmation(message):
             console.print(f"\n➡️  Press [green][Entrer][/green] to {message}, or [red][Ctrl+C][/red] to cancel...", end="")
             input()
         except KeyboardInterrupt:
-            console.print("\n\n[red]❌ Operation cancelled by the user. [/red]")
+            console.print("\n\n[red] ❌ Operation cancelled by the user. [/red]")
             sys.exit(1)

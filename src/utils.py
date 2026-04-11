@@ -64,13 +64,12 @@ def add_new_tags(missing_tags):
     if not missing_tags:
         return
 
-    # 1. Lecture du fichier
+    # read file
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             content = f.read()
-    except FileNotFoundError:
-        ui.print_log(f" ❌ Error : The fime {DATA_FILE} does not exist.")
-        return
+    except FileNotFoundError as e:
+        raise RuntimeError(f" ❌ Error: The file {DATA_FILE} does not exist \n\n ⤷ Error logs: {e} \n")
 
     tags_to_add = []
     for tag in missing_tags:
@@ -88,7 +87,7 @@ def add_new_tags(missing_tags):
 
     new_tags_formatted = ", ".join([f"r'{tag}'" for tag in tags_to_add])
 
-    # 2. Recherche de la liste TAGS
+    # find tags list
     pattern = re.compile(r"(TAGS\s*=\s*\[[^\]]*?)(\s*\])")
     match = pattern.search(content)
 
@@ -101,12 +100,13 @@ def add_new_tags(missing_tags):
         injection = f"\n    # === Ajout Auto Gemini ===\n    {new_tags_formatted}"
         new_content = content[:match.end(1)] + injection + content[match.start(2):]
         
+        # add tags to the list
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             f.write(new_content)
             
         ui.print_log(f" ✅ New tag(s) added to {DATA_FILE.name} : {tags_to_add}")
     else:
-        ui.print_log(f" ❌ Erreur : Impossible de localiser la liste TAGS dans {DATA_FILE.name}")
+        ui.print_log(f" ❌ Error : Impossible to find TAGS list {DATA_FILE.name}")
 
 def format_season_and_episode(season, episode):
     if float(season)/10.0 < 1.0 :
@@ -132,11 +132,7 @@ def correct_movie_filename(file):
         
         success, title, year, original_language = api.api_call(name, year, "en-US", "movie")
         if not success:
-            try :
-                success, title,year,original_language,_ = api.gemini_api_call(file)
-            except Exception as e:
-                ui.print_log(" ❌ Gemini API called failed")
-                raise e
+            success, title,year,original_language,_ = api.gemini_api_call(file)
     
     if success and original_language == "fr" or original_language == "fr-FR":
         success_fr,title_fr, year_fr, _ = api.api_call(name, year, "fr-FR", "movie")
@@ -168,11 +164,7 @@ def correct_tv_show_filename(file):
         
         success, title, _, original_language = api.api_call(name, year, "en-US", "tv")
         if not success:
-            try :
-                success, title, _, _, _ = api.gemini_api_call(file)
-            except Exception as e:
-                ui.print_log(" ❌ Gemini API called failed")
-                raise e
+            success, title, _, _, _ = api.gemini_api_call(file)
         
     if success and original_language == "fr" or original_language == "fr-FR":
         success_fr, title_fr, _, _ = api.api_call(name, year, "fr-FR", "tv")
