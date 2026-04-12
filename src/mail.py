@@ -21,6 +21,7 @@ def send_email(message):
 
     # send
     context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
 
     print_log("Connecting to server...")
     try:
@@ -30,7 +31,7 @@ def send_email(message):
             server.send_message(msg)
             print_log("Success: Email sent successfully!")
             
-    except smtplib.SMTPAuthenticationError:
-        print_log("Error: Authentication failed. Check your email and App Password.")
+    except smtplib.SMTPAuthenticationError as e:
+        raise RuntimeError(f" ❌ Error: Authentication failed. Check your email and password \n\n ⤷ Error logs: {e} \n")
     except Exception as e:
-        print_log(f"Error: An unexpected error occurred: {e}")
+        raise RuntimeError(f" ❌ Error: An unexpected error occurred \n\n ⤷ Error logs: {e} \n")

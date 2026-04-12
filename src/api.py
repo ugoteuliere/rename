@@ -1,4 +1,3 @@
-import sys
 import json
 import requests
 import urllib.parse
@@ -6,7 +5,6 @@ from google import genai
 from config import TMDB_API_KEY,GEMINI_API_KEY
 from src.mail import send_email
 from src.ui import print_log
-# from src.utils import add_new_tags
 
 def api_call(name, year, language, media_type):
     api_key = TMDB_API_KEY
@@ -26,8 +24,7 @@ def api_call(name, year, language, media_type):
     try :
         response = requests.get(url, headers=headers)
     except Exception as e:
-        print_log(f" ❌ API call failed \n\n # Error : {e} \n\n # Query : {name} {year}\n")
-        sys.exit(1)
+        raise RuntimeError(f" ❌ Error: TMDB API call failed \n Query : {name} {year}\n\n ⤷ Error logs: {e} \n")
     
     if response.status_code == 200:
         data = response.json()
@@ -43,12 +40,13 @@ def api_call(name, year, language, media_type):
             tmdb_year = release_date[:4] if release_date else 'unknown'
             original_language = best_match.get('original_language', 'unknown')
             
-            return [tmdb_title, tmdb_year, original_language]
+            return [True, tmdb_title, tmdb_year, original_language]
+        else:
+            print_log(" ❌ API call failed : impossible to read the json data from TMBD API\n")
     else :
         print_log(f" ❌ API call failed \n\n # Code : {response.status_code} \n\n # Query : {name} {year}\n")
-        sys.exit(1)
     
-    return [None, None, None]
+    return [False, None, None, None]
 
 def gemini_api_call(media_info):
     prompt = f"""You are an expert media parsing assistant. Your task is to analyze the metadata of a media file where the standard regex cleaning function failed, and extract the correct Movie or TV Show information.
@@ -90,8 +88,7 @@ def gemini_api_call(media_info):
             ),
         )
     except Exception as e:
-        print_log(f" ❌ GEMINI API call failed \n\n # Error : {e} \n\n")
-        raise e
+        raise RuntimeError(f" ❌ Error: GEMINI API call failed \n\n ⤷ Error logs: {e} \n")
 
     try:
         data = json.loads(response.text)
@@ -111,9 +108,11 @@ def gemini_api_call(media_info):
 
             print_log([title, year, original_language, missing_tags])
                 
-            return [title, year, original_language, missing_tags]
+            return [True, title, year, original_language, missing_tags]
+        else:
+            print_log(" ❌ Error: Impossible to read the json data from Gemini API \n")
             
     except json.JSONDecodeError:
-        print_log(" ❌ Failed to parse Gemini response as JSON")
+        raise RuntimeError(" ❌ Error: Failed to parse Gemini response as JSON \n\n ⤷ Error logs: {e} \n")
         
-    return [None, None, None, None]
+    return [False, None, None, None, None]
