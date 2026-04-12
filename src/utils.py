@@ -5,7 +5,7 @@ import PTN
 import pandas as pd
 from pathlib import Path
 from src import ui, api, mail
-from data.tags import TAGS
+from data.tags import TAGS, TLDS
 from config import PATH, MOVIES_FOLDER_NAME, TV_SHOWS_FOLDER_NAME, NOT_SORTED_MEDIA_FILES_FOLDER_NAME
 
 def verify_arguments(): 
@@ -180,8 +180,31 @@ def correct_tv_show_filename(file):
 
     return corrected_name, season, episode
 
+def remove_url(filename):
+    # setup
+    tlds_pattern = '|'.join(TLDS)
+    url_pattern = rf"""
+        (?:
+            # CASE 1: Starts with 'www.' (Safe to greedily capture multiple subdomains)
+            \bwww\.(?:[a-zA-Z0-9-]+\.)+(?:{tlds_pattern})\b
+            
+            | # OR
+            
+            # CASE 2: No 'www.' (Strictly ONE word before the TLD chain)
+            # This captures "site.com" or "amazon.co.uk" but stops before "My.Movie."
+            \b[a-zA-Z0-9-]+\.(?:(?:{tlds_pattern})\.)*(?:{tlds_pattern})\b
+        )
+    """
+    # clean
+    clean_filename = re.sub(url_pattern, '', filename, flags=re.IGNORECASE | re.VERBOSE)
+    clean_filename = re.sub(r'\.{2,}', '.', clean_filename)
+    clean_filename = clean_filename.strip('.-_ ')
+
+    return clean_filename
+
 def parse_filename(filename):
-    filename_parsed = PTN.parse(filename)
+    filename_without_url = remove_url(filename)
+    filename_parsed = PTN.parse(filename_without_url)
     media = "tv" if (filename_parsed.get('season') or filename_parsed.get('episode')) else "movie"
     title = str(filename_parsed.get('title')) if filename_parsed.get('title') else ""
     year = str(filename_parsed.get('year')) if filename_parsed.get('year') else ""
@@ -194,19 +217,19 @@ def parse_filename(filename):
     
     return parse, media
 
-def clean_filename(file_name):
-    raw_name = file_name.rsplit('.', 1)[0]
+def clean_filename(filename):
+    raw_name = filename.rsplit('.', 1)[0]
     raw_name = raw_name.replace('_', '.')
+
+    # remove urls
+    filename_without_urls = remove_url(raw_name)
     
     # search for a year patern 
     year_match = re.search(r'\(?((?:19|20)\d{2})\)?', raw_name)
     year = year_match.group(1) if year_match else ""
-    
-    clean_title = re.sub(r'https?://\S+', '', raw_name, flags=re.IGNORECASE)
-    clean_title = re.sub(r'www\.\S+', '', clean_title, flags=re.IGNORECASE)
-    tlds = r'(com|fr|net|org|io|tv|me|site|info|biz|ws|ru|co|uk|be|ch|ca)'
-    clean_title = re.sub(rf'\b(?:[a-zA-Z0-9-]+\.){{1,2}}{tlds}\b(?:/\S*)?', '', clean_title, flags=re.IGNORECASE)
-    clean_title = re.sub(r'S\d+E\d+', '', clean_title, flags=re.IGNORECASE)
+
+    # regex filters
+    clean_title = re.sub(r'S\d+E\d+', '', filename_without_urls, flags=re.IGNORECASE)
     clean_title = re.sub(r'\d{5,}', '', clean_title)
     clean_title = re.sub(r'\(?(?:19|20)\d{2}\)?', '', clean_title)
     clean_title = re.sub(r'\s+', ' ', clean_title).strip()

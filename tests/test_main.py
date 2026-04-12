@@ -332,9 +332,38 @@ def test_file_impossible_to_rename_and_mail():
     ("Arrival (2016).mkv", "Arrival", "2016"),
     ("A Knight of the Seven Kingdoms S01E01.mkv", "A Knight of the Seven Kingdoms", ""), # S01E01 sera effacé par ta regex
     
-    # Test de la suppression des URLs (http, https, www, .com, .fr, etc.)
-    ("Super.Movie.2021.www.monsite.fr.1080p.mkv", "Super Movie", "2021"),
-    ("Another.Film.https://torrent-site.com/movie.2018.mp4", "Another Film", "2018"),
+    # Standard domain with 'www.'
+    ("Avatar.2009.www.pirate-bay.org.1080p.mkv", "Avatar", "2009"),
+    
+    # Standard domain without 'www.'
+    ("The.Batman.2022.tracker.net.720p.mkv", "The Batman", "2022"),
+    
+    # Subdomains with 'www.' (Tests Case 1: Greedy safe capture)
+    ("Inception.2010.www.forum.my-tracker.co.uk.mkv", "Inception", "2010"),
+    
+    # Multiple valid TLDs chained together (Tests Case 2: e.g., .com.br)
+    ("Gladiator.2000.release.com.br.1080p.mkv", "Gladiator", "2000"),
+    ("City.Of.God.2002.tracker.co.jp.720p.mkv", "City Of God", "2002"),
+    
+    # Title protection (Tests Case 2: Only 1 word captured before TLD if no www)
+    # "My.Beautiful.Movie" must remain intact, only "site.com" is removed.
+    ("My.Beautiful.Movie.2015.site.com.mkv", "My Beautiful Movie", "2015"),
+    
+    # Domain at the very beginning of the filename
+    ("www.movie-site.info.Deadpool.2016.1080p.mkv", "Deadpool", "2016"),
+    
+    # Domains containing dashes (very common in scene releases)
+    ("Interstellar.2014.super-awesome-tracker.net.1080p.mkv", "Interstellar", "2014"),
+    
+    # Domains with no year present in the filename
+    ("Tenet.www.nolan-films.net.1080p.mkv", "Tenet", ""),
+    
+    # Very short ccTLD (Testing standard geographic domains)
+    ("Amelie.Poulain.2001.french-tracker.fr.mkv", "Amelie Poulain", "2001"),
+    
+    # Edge Case: Title contains a word that looks like a domain but doesn't match the TLD list exactly
+    # (Assuming "movie" is NOT in your TLD list, it shouldn't be touched)
+    ("Scary.Movie.2000.1080p.mkv", "Scary Movie", "2000"),
     
     # Test de la suppression des nombres à 5 chiffres et plus (ex: IDs de torrents)
     ("Movie.With.Tracker.ID.1234567.2005.mkv", "Movie With Tracker ID", "2005"),
@@ -350,6 +379,46 @@ def test_clean_function(file_name, expected_title, expected_year):
     assert result_title == expected_title, f"Error on the title of the file: {file_name}"
     assert result_year == expected_year, f"Error on the year of the file: {file_name}"
 
+
+@pytest.mark.parametrize("file_name, expected_cleaned", [
+    # --- CASE 1: Starts with 'www.' (Greedy capture of subdomains) ---
+    ("Avatar.2009.www.pirate-bay.org.1080p.mkv", "Avatar.2009.1080p.mkv"),
+    ("Inception.2010.www.forum.my-tracker.co.uk.mkv", "Inception.2010.mkv"),
+    ("www.movie-site.info.Deadpool.2016.1080p.mkv", "Deadpool.2016.1080p.mkv"),
+    
+    # --- CASE 2: No 'www.' (Strictly ONE word before TLD to protect title) ---
+    ("The.Batman.2022.tracker.net.720p.mkv", "The.Batman.2022.720p.mkv"),
+    # 'My.Beautiful.Movie' must survive, only 'site.com' is removed
+    ("My.Beautiful.Movie.2015.site.com.mkv", "My.Beautiful.Movie.2015.mkv"), 
+    # Multiple TLDs chained (.com.br)
+    ("Gladiator.2000.release.com.br.1080p.mkv", "Gladiator.2000.1080p.mkv"), 
+    ("City.Of.God.2002.tracker.co.jp.720p.mkv", "City.Of.God.2002.720p.mkv"),
+    
+    # --- Edge Cases & Complex Structures ---
+    # Domain at the very end of the string
+    ("Joker.2019.1080p.BLURAY.site.xyz", "Joker.2019.1080p.BLURAY"), 
+    # Multiple different domains in the same filename
+    ("www.site-one.com.The.Matrix..1999.mkv", "The.Matrix.1999.mkv"), 
+    # No year or resolution present
+    ("Tenet.www.nolan-films.net.1080p.mkv", "Tenet.1080p.mkv"), 
+    # Short ccTLD (.fr)
+    ("Amelie.Poulain.2001.french-tracker.fr.mkv", "Amelie.Poulain.2001.mkv"), 
+    # Dashes within the domain name
+    ("Interstellar.2014.super-awesome-tracker.net.1080p.mkv", "Interstellar.2014.1080p.mkv"), 
+    
+    # --- False Positive Protection ---
+    # Assuming "movie", "film", and "dot" are NOT in the TLDS list, these must remain entirely intact
+    ("Scary.Movie.2000.1080p.mkv", "Scary.Movie.2000.1080p.mkv"),
+    ("A.Good.Film.2018.mkv", "A.Good.Film.2018.mkv"),
+    ("Murder.Dot.Com.2008.mkv", "Murder.2008.mkv"), # .Com will be removed, leaving Murder.Dot.2008.mkv (if 'com' is in TLDs)
+])
+def test_remove_url(file_name, expected_cleaned):
+    """
+    Tests the remove_url function to ensure it strips domains correctly
+    without eating into the movie title or other valid metadata.
+    """
+    result = utils.remove_url(file_name)
+    assert result == expected_cleaned, f"Failed on '{file_name}'. Expected '{expected_cleaned}', but got '{result}'"
 
 # case success
 def test_add_new_tags_success(tmp_path, monkeypatch):
