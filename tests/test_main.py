@@ -685,3 +685,97 @@ def test_make_safe_path_mac_linux(input_string):
     
     # On a Mac, the function should do absolutely nothing to the string
     assert result == str(test_path)
+
+
+def patch_globals(func):
+    """Decorator to apply common patches to the tests."""
+    func = patch('src.files.MOVIES_FOLDER_NAME', 'Movies')(func)
+    func = patch('src.files.TV_SHOWS_FOLDER_NAME', 'TV Shows')(func)
+    func = patch('src.ui.print_log')(func)
+    return func
+
+def patch_globals(func):
+    """Decorator to apply common patches to the tests."""
+    func = patch('src.files.MOVIES_FOLDER_NAME', 'Movies')(func)
+    func = patch('src.files.TV_SHOWS_FOLDER_NAME', 'TV Shows')(func)
+    func = patch('src.ui.print_log')(func)
+    return func
+
+
+@patch_globals
+def test_sort_media_files_success(mock_print, tmp_path):
+    # 1. SETUP
+    with patch('src.files.PATH', str(tmp_path)):
+        
+        # We dynamically generate a downloads folder path that matches the OS
+        dl_dir = tmp_path / 'downloads'
+        
+        # Create a fake Pandas DataFrame using our OS-safe paths
+        data = {
+            'Path': [
+                str(dl_dir / 'movie1.mkv'),      # Standard movie
+                str(dl_dir / 'show1.mp4'),       # Standard TV Show
+                str(dl_dir / 'weird_show.avi'),  # TV Show missing SxxExx
+                str(dl_dir / 'junk.txt')         # Unrecognized media
+            ],
+            'Media': ['movie', 'tv', 'tv', 'unknown'],
+            'Corrected': [
+                'The Matrix (1999)', 
+                'Breaking Bad S01E05', 
+                'Weird Show Name', 
+                'Junk File'
+            ]
+        }
+        df = pd.DataFrame(data)
+        
+        # 2. ACTION
+        result_paths = files.sort_media_files(df)
+        
+        # 3. VERIFY OUTPUT LIST
+        assert len(result_paths) == 3 # The 'unknown' one should have been skipped!
+        
+        # Unpack the results
+        movie_old, movie_new = result_paths[0]
+        _, tv_new = result_paths[1]
+        _, weird_tv_new = result_paths[2]
+        
+        # Check the Movie paths (comparing Path objects, which ignores slash direction!)
+        assert movie_old == dl_dir / 'movie1.mkv'
+        assert movie_new == tmp_path / 'Movies' / 'The Matrix (1999).mkv'
+        
+        # Check the Standard TV Show paths
+        assert tv_new == tmp_path / 'TV Shows' / 'Breaking Bad' / 'Saison 01' / 'Breaking Bad S01E05.mp4'
+        
+        # Check the Fallback TV Show paths
+        assert weird_tv_new == tmp_path / 'TV Shows' / 'Weird Show Name' / 'Unknown' / 'Weird Show Name.avi'
+        
+        # 4. VERIFY FOLDERS WERE CREATED
+        assert (tmp_path / 'Movies').exists()
+        assert (tmp_path / 'TV Shows' / 'Breaking Bad' / 'Saison 01').exists()
+        
+        # 5. VERIFY UI LOGS
+        mock_print.assert_called_once_with("⏭ Ignored (not found) : Junk File.txt")
+
+
+@patch_globals
+def test_sort_media_files_empty_exit(mock_print, tmp_path):
+    # 1. SETUP
+    with patch('src.files.PATH', str(tmp_path)):
+        
+        # Create a fake, OS-safe path for the test text file
+        data = {
+            'Path': [str(tmp_path / 'downloads' / 'test.txt')],
+            'Media': ['unrecognized'],
+            'Corrected': ['test']
+        }
+        df = pd.DataFrame(data)
+        
+        # 2. ACTION & VERIFY
+        with pytest.raises(SystemExit) as exc_info:
+            files.sort_media_files(df)
+            
+        # 3. VERIFY EXIT CODE AND LOGS
+        assert exc_info.value.code == 1 
+        
+        assert mock_print.call_count == 2
+        assert "No media to move to a new folder." in mock_print.call_args[0][0]

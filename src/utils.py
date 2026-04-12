@@ -88,7 +88,7 @@ def add_new_tags(missing_tags):
     new_tags_formatted = ", ".join([f"r'{tag}'" for tag in tags_to_add])
 
     # find tags list
-    pattern = re.compile(r"(TAGS\s*=\s*\[[^\]]*?)(\s*\])")
+    pattern = re.compile(r"(TAGS\s*=\s*\[)([^\]]*)\]")
     match = pattern.search(content)
 
     if match:
