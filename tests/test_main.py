@@ -1,7 +1,7 @@
 import sys
 import pytest
 import pandas as pd
-from pathlib import Path
+from pathlib import Path, PureWindowsPath, PurePosixPath
 from unittest.mock import patch, call
 from src import files, utils, api
 
@@ -446,8 +446,14 @@ def test_move_file_success(tmp_path):
     old_path = source_dir / "video.mkv"
     old_path.write_text("fake video content") 
     new_path = dest_dir / "video.mkv"
-    
-    files.move_file(old_path, new_path)
+
+    # We "mock" make_safe_path so it just returns the path as a string during the test.
+    # Replace 'src.files.make_safe_path' with the actual path to that function.
+    with patch('src.files.make_safe_path', side_effect=lambda x: str(x)):
+        
+        # 2. ACTION (Act)
+        files.move_file(old_path, new_path)
+
     assert not old_path.exists() # The original file should be gone
     assert new_path.exists()     # The file should be in the new location
     assert new_path.read_text() == "fake video content" # Data should be intact
@@ -635,3 +641,47 @@ def test_move_media_files_stops_on_error(mock_move_file, mock_print_log, mock_re
     assert mock_move_file.call_count == 1 # It crashed on the first one and didn't try the second
     mock_print_log.assert_not_called() # It should NOT print the success message
     mock_remove_empty_folders.assert_not_called() # It should NOT run the cleanup
+
+# ---------------------------------------------------------
+# SCENARIO 1: Pretend we are on WINDOWS ('nt')
+# ---------------------------------------------------------
+@patch('os.name', 'nt')
+@pytest.mark.parametrize("input_string, expected_output", [
+    (
+        r"C:\Media\Unsorted\video.mkv", 
+        r"\\?\C:\Media\Unsorted\video.mkv"
+    ),
+    (
+        r"\\MyNAS\PlexMedia\video.mkv", 
+        r"\\?\UNC\MyNAS\PlexMedia\video.mkv"
+    ),
+    (
+        r"folder\file.txt", 
+        r"\\?\folder\file.txt"
+    ),
+])
+def test_make_safe_path_windows(input_string, expected_output):
+    # PureWindowsPath forces Python to handle the backslashes like Windows
+    test_path = PureWindowsPath(input_string)
+    
+    result = files.make_safe_path(test_path)
+    
+    assert result == expected_output
+
+
+# ---------------------------------------------------------
+# SCENARIO 2: Pretend we are on MAC / LINUX ('posix')
+# ---------------------------------------------------------
+@patch('os.name', 'posix')
+@pytest.mark.parametrize("input_string", [
+    "/Users/name/Media/Unsorted/video.mkv",
+    "relative/folder/file.txt"
+])
+def test_make_safe_path_mac_linux(input_string):
+    # PurePosixPath forces Python to handle the forward slashes like Mac/Unix
+    test_path = PurePosixPath(input_string)
+    
+    result = files.make_safe_path(test_path)
+    
+    # On a Mac, the function should do absolutely nothing to the string
+    assert result == str(test_path)

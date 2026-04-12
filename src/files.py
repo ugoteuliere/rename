@@ -47,6 +47,9 @@ def search_media_files():
     return df
 
 def make_safe_path(path: Path) -> str:
+    if os.name != 'nt':
+        return str(path)
+
     path_str = str(path)
 
     if path_str.startswith("\\\\"):
