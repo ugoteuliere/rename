@@ -2,8 +2,10 @@ import sys
 import pytest
 import pandas as pd
 from pathlib import Path, PureWindowsPath, PurePosixPath
-from unittest.mock import patch, call
-from src import files, utils, api
+from unittest.mock import patch, call, MagicMock
+from src import files, utils, api, mail
+import requests
+import smtplib
 
 fichiers = [
     # 30 files have to be corrected
@@ -779,3 +781,108 @@ def test_sort_media_files_empty_exit(mock_print, tmp_path):
         
         assert mock_print.call_count == 2
         assert "No media to move to a new folder." in mock_print.call_args[0][0]
+
+
+# 1. Patch the global API key so the test doesn't crash if you don't have one set locally
+@patch('src.api.TMDB_API_KEY', 'fake_test_key') 
+# 2. Patch requests.get inside the module where api_call is defined
+@patch('src.api.requests.get')
+def test_api_call_raises_runtime_error_on_request_exception(mock_get):
+    # 1. SETUP
+    name = "The Matrix"
+    year = "1999"
+    language = "en"
+    media_type = "movie"
+    
+    # We force requests.get to simulate a severe network crash
+    mock_get.side_effect = requests.exceptions.ConnectionError("Connection refused by server")
+    
+    # 2. ACTION & VERIFY
+    # We expect your custom RuntimeError to bubble up
+    with pytest.raises(RuntimeError) as exc_info:
+        api.api_call(name, year, language, media_type)
+        
+    # 3. VERIFY ERROR MESSAGE
+    # We check that your custom formatting and the original error are both present
+    error_msg = str(exc_info.value)
+    
+    assert "TMDB API call failed" in error_msg
+    assert f"Query : {name} {year}" in error_msg
+    assert "Connection refused by server" in error_msg
+
+
+# -------------------------------------------------------------------
+# A reusable patch stack to fake out the global variables and UI
+# -------------------------------------------------------------------
+def patch_email_globals(func):
+    """Decorator to fake the global config variables and UI logs."""
+    func = patch('src.mail.MAIL', 'fake@gmail.com')(func)
+    func = patch('src.mail.MAIL_PSWD', 'super_secret_password')(func)
+    func = patch('src.mail.print_log')(func)
+    return func
+
+@patch_email_globals
+@patch('src.mail.smtplib.SMTP_SSL') # Mock the SMTP server
+@patch('src.mail.ssl.create_default_context') # Mock the SSL context
+def test_send_email_success(mock_ssl_context, mock_smtp, mock_print):
+    # 1. SETUP
+    # Because SMTP_SSL is used in a 'with' block, we have to mock its __enter__ method
+    mock_server = MagicMock()
+    mock_smtp.return_value.__enter__.return_value = mock_server
+    
+    test_message = "This is a test notification."
+    
+    # 2. ACTION
+    mail.send_email(test_message)
+    
+    # 3. VERIFY
+    # Did it try to connect to the right server on the right port?
+    mock_smtp.assert_called_once_with("smtp.gmail.com", 465, context=mock_ssl_context.return_value)
+    
+    # Did it log in with our fake credentials?
+    mock_server.login.assert_called_once_with('fake@gmail.com', 'super_secret_password')
+    
+    # Did it actually try to send a message?
+    mock_server.send_message.assert_called_once()
+    
+    # Did it print the correct success logs?
+    assert mock_print.call_count == 2
+    mock_print.assert_any_call("Connecting to server...")
+    mock_print.assert_any_call("Success: Email sent successfully!")
+
+
+@patch_email_globals
+@patch('src.mail.smtplib.SMTP_SSL')
+def test_send_email_authentication_error(mock_smtp, mock_print):
+    # 1. SETUP
+    mock_server = MagicMock()
+    mock_smtp.return_value.__enter__.return_value = mock_server
+    
+    # We force the login method to crash with an Authentication Error
+    mock_server.login.side_effect = smtplib.SMTPAuthenticationError(535, b'Authentication failed')
+    
+    # 2. ACTION & VERIFY
+    with pytest.raises(RuntimeError) as exc_info:
+        mail.send_email("Test message")
+        
+    # 3. VERIFY ERROR MESSAGE
+    error_msg = str(exc_info.value)
+    assert "Authentication failed" in error_msg
+    assert "Check your email and password" in error_msg
+
+
+@patch_email_globals
+@patch('src.mail.smtplib.SMTP_SSL')
+def test_send_email_unexpected_error(mock_smtp, mock_print):
+    # 1. SETUP
+    # Here, we force the initial connection to fail entirely (e.g., no internet)
+    mock_smtp.side_effect = ConnectionError("Network is unreachable")
+    
+    # 2. ACTION & VERIFY
+    with pytest.raises(RuntimeError) as exc_info:
+        mail.send_email("Test message")
+        
+    # 3. VERIFY ERROR MESSAGE
+    error_msg = str(exc_info.value)
+    assert "An unexpected error occurred" in error_msg
+    assert "Network is unreachable" in error_msg

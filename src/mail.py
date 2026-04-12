@@ -31,7 +31,7 @@ def send_email(message):
             server.send_message(msg)
             print_log("Success: Email sent successfully!")
             
-    except smtplib.SMTPAuthenticationError:
-        raise RuntimeError(" ❌ Error: Authentication failed. Check your email and password \n\n ⤷ Error logs: {e} \n")
+    except smtplib.SMTPAuthenticationError as e:
+        raise RuntimeError(f" ❌ Error: Authentication failed. Check your email and password \n\n ⤷ Error logs: {e} \n")
     except Exception as e:
         raise RuntimeError(f" ❌ Error: An unexpected error occurred \n\n ⤷ Error logs: {e} \n")
