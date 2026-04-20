@@ -5,18 +5,20 @@ import sys
 import shutil
 import os
 from src import ui, utils
-from config import PATH, MOVIES_FOLDER_NAME, TV_SHOWS_FOLDER_NAME, NOT_SORTED_MEDIA_FILES_FOLDER_NAME
+from config import MOVIES_FOLDER, TV_SHOWS_FOLDER, NOT_SORTED_MEDIA_FILES_FOLDER
 
-def search_media_files():
-    target_dir = Path(PATH) / NOT_SORTED_MEDIA_FILES_FOLDER_NAME
-    video_extensions = {'.mkv', '.mp4', '.avi', '.mov', '.wmv', '.m4v'}
+def search_media_files(path):
+    target_dir = Path(path).resolve() if path is not None else Path(NOT_SORTED_MEDIA_FILES_FOLDER)
     
     # check if the directory actually exists
     if not target_dir.exists() or not target_dir.is_dir():
-        ui.print_log(f"Error: The directory '{PATH}' does not exist.")
+        ui.print_log(f"Error: The directory '{target_dir}' does not exist.")
         return None
 
-    media_data_table = []
+    video_extensions = {'.mkv', '.mp4', '.avi', '.mov', '.wmv', '.m4v'}
+    
+    messy_data_table = []
+    clean_data_table = []
 
     # recursively searches all folders
     for file_path in target_dir.rglob('*'):
@@ -29,7 +31,7 @@ def search_media_files():
                 
                 parse, media = utils.parse_filename(file_path.name)
                 
-                media_data_table.append({
+                messy_data_table.append({
                     'File': file_path.name,
                     'Folder': file_path.parent.name,
                     'Path': str(file_path),
@@ -37,14 +39,48 @@ def search_media_files():
                     'Parse': parse,
                     'Media': media
                 })
+            else:
+                parse, media = utils.parse_filename(file_path.name)
 
-    # convert to pandas dataframe
-    if (len(media_data_table) == 0) :
+                if media == "movie": 
+                    clean_data_table.append({
+                        'Original': file_path.stem,
+                        'Corrected': file_path.stem,
+                        'Path': str(file_path),
+                        'Media': media,
+                        'Season': None,
+                        'Episode': None   
+                    })
+
+                elif media == "tv": 
+                    clean_data_table.append({
+                        'Original': file_path.stem,
+                        'Corrected': file_path.stem,
+                        'Path': str(file_path),
+                        'Media': media,
+                        'Season': parse[2],
+                        'Episode': parse[3]
+                    })
+
+    if len(messy_data_table) == 0 and len(clean_data_table) == 0:
         ui.print_log("❌ No media files found in that folder")
         sys.exit(1)
+    else:
+        ui.print_log(f"\n📂 Folder scan report:\n - {len(messy_data_table)} files to rename\n - {len(clean_data_table)} files with clean filename\n")
 
-    df = pd.DataFrame(media_data_table)
-    return df
+    messy_data = pd.DataFrame(messy_data_table)
+    clean_data = pd.DataFrame(
+        clean_data_table, 
+        columns=['Original', 'Corrected', 'Path', 'Media', 'Season', 'Episode']
+    )
+    
+    sorted_clean_data = clean_data.sort_values(
+        by=['Corrected', 'Season', 'Episode'], 
+        ascending=[True, True, True], 
+        ignore_index=True
+    )
+
+    return messy_data, sorted_clean_data
 
 def make_safe_path(path: Path) -> str:
     if os.name != 'nt':
@@ -57,10 +93,11 @@ def make_safe_path(path: Path) -> str:
     else:
         return "\\\\?\\" + path_str
 
-def rename_media_files(corrected_data_table):
+def rename_media_files(clean_data_table):
     renamed_count = 0
+    already_clean_files_count = 0
 
-    for index, row in corrected_data_table.iterrows():
+    for index, row in clean_data_table.iterrows():
         if row['Corrected'] == None:
             ui.print_log(f"⏭ Ignored (not found) : {row['Original']}")
             continue
@@ -77,30 +114,31 @@ def rename_media_files(corrected_data_table):
         
         new_path = original_path.with_name(new_filename).resolve()
         safe_new_path = make_safe_path(new_path)
-        
+
         try:
             if safe_old_path == safe_new_path:
+                already_clean_files_count += 1
                 continue
                 
-            corrected_data_table.loc[index, 'Path'] = str(new_path)
+            clean_data_table.loc[index, 'Path'] = str(new_path)
             os.rename(safe_old_path, safe_new_path)
             
             renamed_count += 1
             
         except Exception as e:
-            raise RuntimeError(f" ❌ Error: Impossible to rename {original_path.name[:30]}... \n\n ⤷ Error logs: {e} \n")
+            raise RuntimeError(ui.print_error(f" ❌ Error: Impossible to rename {original_path.name[:30]}...",e))
 
     if renamed_count == 0:
         ui.print_log("\n ❌ No files have been renamed.")
     else:
-        ui.print_log(f"\n🎉 Done ! {renamed_count}/{len(corrected_data_table)} file(s) have been successfully renamed.\n\n")
+        ui.print_log(f"\n🎉 Done ! {renamed_count}/{len(clean_data_table)-already_clean_files_count} file(s) have been successfully renamed.\n\n")
     
-    return corrected_data_table
+    return clean_data_table
 
-def sort_media_files(corrected_data_table):
+def sort_media_files(clean_data_table):
     paths = []
 
-    for index, movie in corrected_data_table.iterrows():
+    for index, movie in clean_data_table.iterrows():
         old_path = Path(str(movie['Path']))
         extension = old_path.suffix
         media = movie['Media']
@@ -108,7 +146,7 @@ def sort_media_files(corrected_data_table):
         corrected_name = f"{movie['Corrected']}{extension}"
         
         if media == "movie":
-            folder_path = Path(PATH) / MOVIES_FOLDER_NAME
+            folder_path = Path(MOVIES_FOLDER)
             folder_path.mkdir(parents=True, exist_ok=True)
             new_path = folder_path / corrected_name
             
@@ -123,7 +161,7 @@ def sort_media_files(corrected_data_table):
 
             tv_show_name = re.sub(r'S\d+E\d+', '', str(movie['Corrected']), flags=re.IGNORECASE).strip()
 
-            folder_path = Path(PATH) / TV_SHOWS_FOLDER_NAME / tv_show_name / season_folder
+            folder_path = Path(TV_SHOWS_FOLDER) / tv_show_name / season_folder
             folder_path.mkdir(parents=True, exist_ok=True)
             new_path = folder_path / corrected_name
             
@@ -149,7 +187,7 @@ def move_file(old_path, new_path):
     try:
         shutil.move(safe_old, safe_new) 
     except Exception as e:
-        raise RuntimeError(f" ❌ Error: Impossible to move the file \n Old path {safe_old} \n New path {safe_new} \n\n ⤷ Error logs : {e} \n")
+        raise RuntimeError(ui.print_error(f" ❌ Error: Impossible to move the file \n Old path {safe_old} \n New path {safe_new}",e))
 
 def remove_empty_folders(target_path):
     if not os.path.exists(target_path):
@@ -164,7 +202,7 @@ def remove_empty_folders(target_path):
             try:
                 os.rmdir(dirpath)
             except OSError as e:
-                raise RuntimeError(f" ❌ Error: An error occurred while deleting {dirpath} \n\n ⤷ Error logs : {e} \n")
+                raise RuntimeError(ui.print_error(f" ❌ Error: An error occurred while deleting {dirpath}",e))
 
 def move_media_files (paths):
     success_count = 0
@@ -174,4 +212,4 @@ def move_media_files (paths):
             
     ui.print_log(f"\n✅ {success_count} files have been successfully sorted and moved!")
 
-    remove_empty_folders(Path(PATH) / NOT_SORTED_MEDIA_FILES_FOLDER_NAME)
+    remove_empty_folders(Path(NOT_SORTED_MEDIA_FILES_FOLDER))

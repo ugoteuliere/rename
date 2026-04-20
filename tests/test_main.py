@@ -92,16 +92,16 @@ donnees_test_api = [
     ("Lupin", None, "tv", [True,"Lupin", "unkn", "fr"]),
 ]
 
-MOVIES_FOLDER_NAME = "Films"
-TV_SHOWS_FOLDER_NAME = "Séries"
-NOT_SORTED_MEDIA_FILES_FOLDER_NAME = ".download"
+MOVIES_FOLDER = "Films"
+TV_SHOWS_FOLDER = "Séries"
+NOT_SORTED_MEDIA_FILES_FOLDER = ".download"
 
 @pytest.fixture
 def setup(monkeypatch, tmp_path):
-    dossier_download = tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER_NAME
+    dossier_download = tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER
     dossier_download.mkdir()
-    (tmp_path / MOVIES_FOLDER_NAME).mkdir()
-    (tmp_path / TV_SHOWS_FOLDER_NAME).mkdir()
+    (tmp_path / MOVIES_FOLDER).mkdir()
+    (tmp_path / TV_SHOWS_FOLDER).mkdir()
     
     monkeypatch.setattr("src.utils.PATH", str(tmp_path))
     monkeypatch.setattr("src.files.PATH", str(tmp_path))
@@ -120,46 +120,6 @@ def check_parsed_media_type (media_files,filename,media):
                 assert movie['Media'] == media
                 found = True
             i=i+1
-
-def test_path_verification_with_correct_env(setup):
-    result = utils.verify_path()
-    assert result == 0
-
-def test_path_verification_1_must_exit_with_one(monkeypatch, tmp_path):
-    (tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER_NAME).mkdir()
-    (tmp_path / f"{MOVIES_FOLDER_NAME}s").mkdir() # Faux nom exprès
-    (tmp_path / TV_SHOWS_FOLDER_NAME).mkdir()
-
-    monkeypatch.setattr("src.utils.PATH", str(tmp_path))
-
-    with pytest.raises(SystemExit) as e:
-        utils.verify_path()
-        
-    assert e.value.code == 1
-
-def test_path_verification_2_must_exit_with_one(monkeypatch, tmp_path):
-    (tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER_NAME).mkdir()
-    (tmp_path / MOVIES_FOLDER_NAME).mkdir()
-    (tmp_path / TV_SHOWS_FOLDER_NAME).mkdir()
-    (tmp_path / "Error").mkdir() # wrong folder
-
-    monkeypatch.setattr("src.utils.PATH", str(tmp_path))
-
-    with pytest.raises(SystemExit) as e:
-        utils.verify_path()
-        
-    assert e.value.code == 1
-
-def test_path_verification_3_must_exit_with_one(monkeypatch, tmp_path):
-    (tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER_NAME).mkdir()
-    (tmp_path / MOVIES_FOLDER_NAME).mkdir() # missing folder
-
-    monkeypatch.setattr("src.utils.PATH", str(tmp_path))
-
-    with pytest.raises(SystemExit) as e:
-        utils.verify_path()
-        
-    assert e.value.code == 1
 
 def test_search_media_files(setup):
     media_files = files.search_media_files()
@@ -181,8 +141,8 @@ def test_api_call_errors():
     assert api.api_call(name, year, "en-US", media_type) == [False, None, None, None]
 
 def test_get_corrected_media_filenames(setup):
-    media_files = files.search_media_files()
-    corrected_filenames = utils.get_corrected_media_filenames(media_files)
+    media_files, clean_files = files.search_media_files("nothing")
+    corrected_filenames = utils.get_corrected_media_filenames(media_files,clean_files)
     for index,movie in corrected_filenames.iterrows():
         i = 0
         found = False
@@ -193,64 +153,22 @@ def test_get_corrected_media_filenames(setup):
             i=i+1
 
 def test_rename_media_files(setup):
-    media_files = files.search_media_files()
-    corrected_filenames = utils.get_corrected_media_filenames(media_files)
+    media_files, clean_files = files.search_media_files("nothing")
+    corrected_filenames = utils.get_corrected_media_filenames(media_files,clean_files)
     files.rename_media_files(corrected_filenames)
 
     # scan of the folder with corrected filenames
-    target_dir = Path(NOT_SORTED_MEDIA_FILES_FOLDER_NAME)
+    target_dir = Path(NOT_SORTED_MEDIA_FILES_FOLDER)
     for file_path in target_dir.rglob('*'):
         corrected_name = file_path.stem.strip()
         if corrected_name not in ["Arrival (2016)", "A Knight of the Seven Kingdoms S01E01", "Suits S01E01"] :
             assert corrected_name in fichiers_corriges
 
-# Test Group 1: Valid Arguments
-@pytest.mark.parametrize("mock_args, expected_result", [
-    # --- Cas classiques ---
-    (["main.py"], 0),             # Aucun argument -> "auto" par défaut
-    (["main.py", "auto"], 0),     # Mode explicite "auto" -> "auto"
-    (["main.py", "manual"], 0), # Mode explicite "manual" -> "manual"
-    
-    # --- Nouveaux cas avec "log" ---
-    (["main.py", "log"], 0),               # Juste "log" -> mode "auto" par défaut
-    (["main.py", "auto", "log"], 0),       # "auto" + "log" -> "auto"
-    (["main.py", "log", "auto"], 0),       # L'ordre ne doit pas importer
-    (["main.py", "manual", "log"], 0),   # "manual" + "log" -> "manual"
-    (["main.py", "log", "manual"], 0),   # L'ordre ne doit pas importer
-])
-def test_verify_arguments_valid(mock_args, expected_result):
-    # patch.object remplace temporairement sys.argv par mock_args
-    with patch.object(sys, 'argv', mock_args):
-        result = utils.verify_arguments()
-        assert result == expected_result
-
-# Test Group 2: Invalid Arguments (Expect SystemExit)
-@pytest.mark.parametrize("mock_args", [
-    # --- Valeurs non reconnues ---
-    (["main.py", "not a valid argument"]), # Mauvaise chaîne de caractères
-    (["main.py", "random"]),               # Autre mauvaise chaîne
-    (["main.py", "log", "random"]),        # Un bon et un mauvais argument
-    
-    # --- Incompatibilité ---
-    (["main.py", "auto", "manual"]),       # Ne peut pas être "auto" et "manual" en même temps
-    (["main.py", "manual", "auto"]),       # Pareil, peu importe l'ordre
-    
-    # --- Trop d'arguments (> 2) ---
-    (["main.py", "manual", "log", "extra"]), # 3 arguments au lieu de 2 max
-    (["main.py", "auto", "log", "manual"]),  # 3 arguments
-])
-def test_verify_arguments_invalid_exits(mock_args):
-    with patch.object(sys, 'argv', mock_args):
-        # On s'attend à ce que le programme appelle sys.exit(1)
-        with pytest.raises(SystemExit) as excinfo:
-            utils.verify_arguments()
-        assert excinfo.value.code == 1
-
 donnees_test_gemini_api = [(
     {
         'File': "Blade.Runner.2049.2017.2160p.UHD.BluRay.Remux.HEVC.HDR.TrueHD.7.1.Atmos.VOSTFR-TEAM.mkv",
-        'Folder': NOT_SORTED_MEDIA_FILES_FOLDER_NAME,
-        'Path': f"/home/ugo/movies/{NOT_SORTED_MEDIA_FILES_FOLDER_NAME}",
+        'Folder': NOT_SORTED_MEDIA_FILES_FOLDER,
+        'Path': f"/home/ugo/movies/{NOT_SORTED_MEDIA_FILES_FOLDER}",
         'Clean': "Blade Runner 2049 2160p HEVC",
         'Parse': None,
         'Media': "movie"
@@ -271,8 +189,8 @@ def test_gemini_api_call(media_info, expected):
 donnees_wrong_test_gemini_api = [(
     {
         'File': "jkdvdqskldnvdsvsvsj.mkv",
-        'Folder': NOT_SORTED_MEDIA_FILES_FOLDER_NAME,
-        'Path': f"/home/ugo/movies/{NOT_SORTED_MEDIA_FILES_FOLDER_NAME}",
+        'Folder': NOT_SORTED_MEDIA_FILES_FOLDER,
+        'Path': f"/home/ugo/movies/{NOT_SORTED_MEDIA_FILES_FOLDER}",
         'Clean': "zinovikns,dl",
         'Parse': None,
         'Media': "movie"
@@ -293,8 +211,8 @@ def test_error_gemini_api_call(media_info, expected):
 def test_file_impossible_to_rename_and_mail():
     media_files = pd.DataFrame([{
         'File': "apjfpjkd.mkv",
-        'Folder': NOT_SORTED_MEDIA_FILES_FOLDER_NAME,
-        'Path': f"/home/ugo/movies/{NOT_SORTED_MEDIA_FILES_FOLDER_NAME}",
+        'Folder': NOT_SORTED_MEDIA_FILES_FOLDER,
+        'Path': f"/home/ugo/movies/{NOT_SORTED_MEDIA_FILES_FOLDER}",
         'Clean': ["apjfpjkd",""],
         'Parse': ["apjfpjkd",""],
         'Media': "movie"
@@ -633,7 +551,7 @@ def test_remove_empty_folders_raises_runtime_error(tmp_path):
 @patch('src.ui.print_log')
 @patch('src.files.move_file')
 @patch('src.files.PATH', 'fake_root_dir') # Faking the global variable
-@patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER_NAME', 'unsorted_media') # Faking the global variable
+@patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER', 'unsorted_media') # Faking the global variable
 def test_move_media_files_success(mock_move_file, mock_print_log, mock_remove_empty_folders):
     # 1. SETUP
     # A list of fake paths to move
@@ -669,7 +587,7 @@ def test_move_media_files_success(mock_move_file, mock_print_log, mock_remove_em
 @patch('src.ui.print_log')
 @patch('src.files.move_file')
 @patch('src.files.PATH', 'fake_root')
-@patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER_NAME', 'unsorted')
+@patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER', 'unsorted')
 def test_move_media_files_empty_list(mock_move_file, mock_print_log, mock_remove_empty_folders):
     # 1. SETUP
     paths_to_move = [] # Empty list!
@@ -690,7 +608,7 @@ def test_move_media_files_empty_list(mock_move_file, mock_print_log, mock_remove
 @patch('src.ui.print_log')
 @patch('src.files.move_file')
 @patch('src.files.PATH', 'fake_root')
-@patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER_NAME', 'unsorted')
+@patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER', 'unsorted')
 def test_move_media_files_stops_on_error(mock_move_file, mock_print_log, mock_remove_empty_folders):
     # 1. SETUP
     paths_to_move = [
@@ -760,15 +678,15 @@ def test_make_safe_path_mac_linux(input_string):
 
 def patch_globals(func):
     """Decorator to apply common patches to the tests."""
-    func = patch('src.files.MOVIES_FOLDER_NAME', 'Movies')(func)
-    func = patch('src.files.TV_SHOWS_FOLDER_NAME', 'TV Shows')(func)
+    func = patch('src.files.MOVIES_FOLDER', 'Movies')(func)
+    func = patch('src.files.TV_SHOWS_FOLDER', 'TV Shows')(func)
     func = patch('src.ui.print_log')(func)
     return func
 
 def patch_globals(func):
     """Decorator to apply common patches to the tests."""
-    func = patch('src.files.MOVIES_FOLDER_NAME', 'Movies')(func)
-    func = patch('src.files.TV_SHOWS_FOLDER_NAME', 'TV Shows')(func)
+    func = patch('src.files.MOVIES_FOLDER', 'Movies')(func)
+    func = patch('src.files.TV_SHOWS_FOLDER', 'TV Shows')(func)
     func = patch('src.ui.print_log')(func)
     return func
 

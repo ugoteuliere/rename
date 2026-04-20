@@ -1,13 +1,21 @@
+import sys
 import json
 import requests
 import urllib.parse
 from google import genai
-from config import TMDB_API_KEY,GEMINI_API_KEY
 from src.mail import send_email
-from src.ui import print_log
+from src.ui import print_log, print_error
+from data.data import TAGS
+
+import config
+TMDB_API_KEY = getattr(config, 'TMDB_API_KEY', None)
+GEMINI_API_KEY = getattr(config, 'GEMINI_API_KEY', None)
 
 def api_call(name, year, language, media_type):
     api_key = TMDB_API_KEY
+    if api_key == None:
+        print_log("❌ Missing configuration: \nThe global variable TMDB_API_KEY needs to be configured in a config.py file at the root of the script. Please refer to the following documentation: https://github.com/ugoteuliere/rename\n\n Stopping program.")
+        sys.exit(1)
     encoded_query = urllib.parse.quote(name)
     
     # build url
@@ -24,7 +32,7 @@ def api_call(name, year, language, media_type):
     try :
         response = requests.get(url, headers=headers)
     except Exception as e:
-        raise RuntimeError(f" ❌ Error: TMDB API call failed \n Query : {name} {year}\n\n ⤷ Error logs: {e} \n")
+        raise RuntimeError(print_error(f" ❌ Error: TMDB API call failed \n Query : {name} {year}",e))
     
     if response.status_code == 200:
         data = response.json()
@@ -42,40 +50,54 @@ def api_call(name, year, language, media_type):
             
             return [True, tmdb_title, tmdb_year, original_language]
         else:
-            print_log(" ❌ API call failed : impossible to read the json data from TMBD API\n")
+            print_log(f" ❌ API call failed : impossible to read the JSON data from TMDB API\n\n # Query : {name} {year}\n")
     else :
         print_log(f" ❌ API call failed \n\n # Code : {response.status_code} \n\n # Query : {name} {year}\n")
     
     return [False, None, None, None]
 
 def gemini_api_call(media_info):
-    prompt = f"""You are an expert media parsing assistant. Your task is to analyze the metadata of a media file where the standard regex cleaning function failed, and extract the correct Movie or TV Show information.
+    prompt = f"""You are an elite Media Metadata Extraction API. Your task is to act as a fallback parser to analyze highly obfuscated media filenames when standard regex cleaning algorithms fail.
 
-    Here is the file information:
-    - File name: {media_info['File']}
-    - Folder name: {media_info['Folder']}
-    - Path of the file: {media_info['Path']}
-    - Output of clean function: {media_info['Clean']}
-    - Output of parsing function: {media_info['Parse']}
-    - Media type: {media_info['Media']}
+    CONTEXT:
+    - Original File Name: "{media_info['File']}"
+    - Folder Name: "{media_info['Folder']}"
+    - Absolute Path: "{media_info['Path']}"
+    - Clean Function Output (Failed): "{media_info['Clean']}"
+    - Parse Function Output (Failed): "{media_info['Parse']}"
+    - Media Type: "{media_info['Media']}"
 
-    Instructions:
-    1. Identify the official name of the movie or TV show. CRITICAL: If the media is originally a French production (made in France/French language), you MUST provide its official French title. For all other productions, provide the standard international/English title.
-    2. Identify the release year.
-    3. Identify the original language of the production using standard 2-letter language codes (e.g., "fr" for French, "en" for English, "es" for Spanish).
-    4. My cleaning function uses a list of common torrent tags (like 1080p, vo, vfi, bluray, x264, etc.). If the output of my cleaning function is cluttered with leftover tags that aren't part of the actual title, list this leftover tags (only the one in the cleaning function output) in the `missing_tags` array. 
-    5. Set "success" to 1 if you confidently found the title, or 0 if you could not determine it.
-    6. If you cannot determine the name, year, language, or missing tags, return `null` for those specific values.
+    KNOWN TAGS DICTIONARY (Already handled by the algorithm):
+    {TAGS}
 
-    Respond STRICTLY with a valid JSON object matching the exact schema below. Do not include markdown formatting, code blocks, or any conversational text.
+    EXTRACTION RULES:
+    1. Title Identification: Extract the exact, official name of the movie or TV show.
+    - CRITICAL: If the media is originally a French production (made in France / French language), you MUST output its official French title. 
+    - For all other productions, output the standard English/International title.
+    2. Release Year: Extract the release year (4 digits).
+    3. Original Language: Identify the original production language using standard ISO 639-1 2-letter codes (e.g., "fr" for French, "en" for English, "es" for Spanish).
+    4. Tag Analysis (Missing Tags): Standard release tags include resolutions (1080p), codecs (x264, HEVC), languages (MULTI, VFF), and release groups (YTS, RARGB). Analyze the "Clean Function Output" for any residual tags that the algorithm failed to remove. 
+    5. Tag Comparison: Compare any residual tags you found against the KNOWN TAGS DICTIONARY. If you identify valid torrent/release tags that caused the clean function to fail because they are missing from the known list, add them to the "missing_tags" array.
+
+    OUTPUT FORMAT:
+    Respond STRICTLY with a valid JSON object matching the exact schema below. Do not wrap the JSON in markdown blocks (e.g., ```json), do not include code blocks, and do not add any conversational text.
 
     {{
-      "success": 1,
-      "name": "string",
-      "year": "string",
-      "original_language": "string",
-      "missing_tags": ["string", "string"]
-    }}"""
+    "success": 1,
+    "name": "string",
+    "year": "string",
+    "original_language": "string",
+    "missing_tags": ["tag1", "tag2"]
+    }}
+
+    Note: 
+    - Set "success" to 1 if you confidently found the title, otherwise set it to 0.
+    - If you cannot determine the year, language, or missing_tags, use `null` for those fields.
+    """
+    
+    if GEMINI_API_KEY == None:
+        print_log("❌ Missing configuration: \nThe global variable GEMINI_API_KEY needs to be configured in a config.py file at the root of the script. Please refer to the following documentation: https://github.com/ugoteuliere/rename\n\n Stopping program.")
+        sys.exit(1)
     
     # call api
     try:
@@ -88,7 +110,8 @@ def gemini_api_call(media_info):
             ),
         )
     except Exception as e:
-        raise RuntimeError(f" ❌ Error: GEMINI API call failed \n\n ⤷ Error logs: {e} \n")
+        raise RuntimeError(print_error(" ❌ Error: GEMINI API call failed",e))
+    
 
     try:
         data = json.loads(response.text)
@@ -112,7 +135,7 @@ def gemini_api_call(media_info):
         else:
             print_log(" ❌ Error: Impossible to read the json data from Gemini API \n")
             
-    except json.JSONDecodeError:
-        raise RuntimeError(" ❌ Error: Failed to parse Gemini response as JSON \n\n ⤷ Error logs: {e} \n")
+    except json.JSONDecodeError as e:
+        raise RuntimeError(print_error(" ❌ Error: Failed to parse Gemini response as JSON",e))
         
     return [False, None, None, None, None]

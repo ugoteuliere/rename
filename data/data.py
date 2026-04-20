@@ -9,7 +9,7 @@ TAGS = [
     # === CODECS VIDÉO & QUALITÉ ===
     r'x264', r'h264', r'avc', r'x265', r'h265', r'H\.265', r'hevc', r'av1', r'xvid', r'divx',
     r'10bit', r'12bit', r'sdr', r'hdr', r'hdr10', r'hdr10\+', r'dolby', r'vision', r'dv',
-    r'hdlight', r'4klight', r'mhd', r'microhd', r'qtz', r'imax',
+    r'hdlight', r'4klight', r'4kl', r'mhd', r'microhd', r'qtz', r'imax',
     
     # === AUDIO ===
     r'ac3', r'eac3', r'aac', r'dts(?:-?hd(?:\.?ma)?)?', r'dtshd', r'truehd', r'atmos', 

@@ -5,60 +5,34 @@ import PTN
 import pandas as pd
 from pathlib import Path
 from src import ui, api, mail
-from data.tags import TAGS, TLDS
-from config import PATH, MOVIES_FOLDER_NAME, TV_SHOWS_FOLDER_NAME, NOT_SORTED_MEDIA_FILES_FOLDER_NAME
+from src.ui import AI_FALLBACK_ENABLED, print_error
+from data.data import TAGS, TLDS
 
-def verify_arguments(): 
-    args = sys.argv[1:]
-    if len(args) > 2:
-        ui.print_log("Wrong arguments : maximum 2 arguments expected (e.g., 'auto'/'manual' and/or 'log').")
-        sys.exit(1)
+import config
+MOVIES_FOLDER = getattr(config, 'MOVIES_FOLDER', None)
+TV_SHOWS_FOLDER = getattr(config, 'TV_SHOWS_FOLDER', None)
+NOT_SORTED_MEDIA_FILES_FOLDER = getattr(config, 'NOT_SORTED_MEDIA_FILES_FOLDER', None)
 
-    for arg in args:
-        if arg not in ["auto", "manual", "log"]:
-            ui.print_log("Wrong arguments : expected values are 'auto', 'manual', 'log' or nothing.")
-            sys.exit(1)
-            
-    if "auto" in args and "manual" in args:
-        ui.print_log("Wrong arguments : cannot use 'auto' and 'manual' at the same time.")
-        sys.exit(1)
+DATA_FILE = Path("../data/data.py")
 
-    return 0
-
-def verify_path():
-    path = PATH
-    if not os.path.exists(path):
-        ui.print_log(f"❌ The base path '{path}' does not exist. Stopping program.")
-        sys.exit(1) 
-
-    required_folders = [MOVIES_FOLDER_NAME, TV_SHOWS_FOLDER_NAME, NOT_SORTED_MEDIA_FILES_FOLDER_NAME]
+def verify_folders():
+    required_folders = [MOVIES_FOLDER, TV_SHOWS_FOLDER, NOT_SORTED_MEDIA_FILES_FOLDER]
     missing_folders = []
-    unexpected_items = []
-    expected_items = ["desktop.ini"]
 
-    actual_contents = os.listdir(path)
-
-    for folder in required_folders:
-        folder_path = os.path.join(path, folder)
-        if not os.path.isdir(folder_path):
-            missing_folders.append(folder)
-
-    for item in actual_contents:
-        if item not in required_folders and item not in expected_items:
-            unexpected_items.append(item)
-
-    if missing_folders:
-        ui.print_log(f"❌ Missing folders: {', '.join(missing_folders)}. Stopping program.")
+    if MOVIES_FOLDER == None or TV_SHOWS_FOLDER == None or NOT_SORTED_MEDIA_FILES_FOLDER == None:
+        ui.print_log("❌ Missing configuration: \nThe global variables MOVIES_FOLDER,TV_SHOWS_FOLDER and NOT_SORTED_MEDIA_FILES_FOLDER all need to be configured in a config.py file at the root of the script. Please refer to the following documentation: https://github.com/ugoteuliere/rename\n\n Stopping program.")
         sys.exit(1)
 
-    if unexpected_items:
-        ui.print_log(f"❌ Unexpected items found in '{path}': {', '.join(unexpected_items)}.")
-        ui.print_log(f"⚠️ The program expects ONLY the following folders to be present: {', '.join(required_folders)}. Stopping program.")
+    for folder_path in required_folders:
+        if not os.path.isdir(folder_path):
+            missing_folders.append(folder_path)
+
+    # If any folders are missing, log the error and exit
+    if missing_folders:
+        ui.print_log(f"❌ Missing required folders: {', '.join(missing_folders)}.\n\n Stopping program.")
         sys.exit(1)
 
     return 0
-
-DATA_FILE = Path("../data/tags.py")
 
 def add_new_tags(missing_tags):
     if not missing_tags:
@@ -69,7 +43,7 @@ def add_new_tags(missing_tags):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             content = f.read()
     except FileNotFoundError as e:
-        raise RuntimeError(f" ❌ Error: The file {DATA_FILE} does not exist \n\n ⤷ Error logs: {e} \n")
+        raise RuntimeError(print_error(f" ❌ Error: The file {DATA_FILE} does not exist",e))
 
     tags_to_add = []
     for tag in missing_tags:
@@ -131,7 +105,7 @@ def correct_movie_filename(file):
         year = file['Clean'][1]
         
         success, title, year, original_language = api.api_call(name, year, "en-US", "movie")
-        if not success:
+        if not success and AI_FALLBACK_ENABLED:
             success, title,year,original_language,_ = api.gemini_api_call(file)
     
     if success and original_language == "fr" or original_language == "fr-FR":
@@ -150,6 +124,7 @@ def correct_movie_filename(file):
     return corrected_name
 
 def correct_tv_show_filename(file):
+    global AI_FALLBACK_ENABLED
     name    = file['Parse'][0]
     year    = file['Parse'][1]
     season  = file['Parse'][2]
@@ -163,7 +138,7 @@ def correct_tv_show_filename(file):
         year = file['Clean'][1]
         
         success, title, _, original_language = api.api_call(name, year, "en-US", "tv")
-        if not success:
+        if not success and AI_FALLBACK_ENABLED:
             success, title, _, _, _ = api.gemini_api_call(file)
         
     if success and original_language == "fr" or original_language == "fr-FR":
@@ -204,6 +179,7 @@ def remove_url(filename):
 
 def parse_filename(filename):
     filename_without_url = remove_url(filename)
+    filename_without_url = re.sub(r'\d{5,}', '', filename_without_url)
     filename_parsed = PTN.parse(filename_without_url)
     media = "tv" if (filename_parsed.get('season') or filename_parsed.get('episode')) else "movie"
     title = str(filename_parsed.get('title')) if filename_parsed.get('title') else ""
@@ -244,24 +220,26 @@ def clean_filename(filename):
     
     return clean_title, year
 
-def get_corrected_media_filenames(media_data_table):
-    corrected_data_table = []
+def get_corrected_media_filenames(messy_data_table, clean_data_table):
     
-    ui.print_log(f"\nAnalysing {len(media_data_table)} files. Please wait...\n")
+    ui.print_log(f"\nAnalysing {len(messy_data_table)} files. Please wait...\n")
     
-    for index, file in media_data_table.iterrows():
+    new_clean_data_rows = []
+    for index, file in messy_data_table.iterrows():
         if file['Media'] == "movie": 
-            corrected_name = correct_movie_filename(file)
-            corrected_data_table.append({
+            corrected_name = correct_movie_filename(file) 
+            new_clean_data_rows.append({
                 'Original': file['File'],
                 'Corrected': corrected_name,
                 'Path': file['Path'],
-                'Media': file['Media']
+                'Media': file['Media'],
+                'Season': None,
+                'Episode': None   
             })
 
         elif file['Media'] == "tv": 
-            corrected_name, season, episode = correct_tv_show_filename(file)
-            corrected_data_table.append({
+            corrected_name, season, episode = correct_tv_show_filename(file) 
+            new_clean_data_rows.append({
                 'Original': file['File'],
                 'Corrected': corrected_name,
                 'Path': file['Path'],
@@ -269,8 +247,37 @@ def get_corrected_media_filenames(media_data_table):
                 'Season': season,
                 'Episode': episode
             })
-        else :
+        else:
             ui.print_log("Ignored : " + file['File'] + "\n")
         
-    df = pd.DataFrame(corrected_data_table)
+    new_clean_data_rows_df = pd.DataFrame(new_clean_data_rows)
+    if not new_clean_data_rows_df.empty:
+        if clean_data_table.empty:
+            df = new_clean_data_rows_df
+        else:
+            df = pd.concat([clean_data_table, new_clean_data_rows_df], ignore_index=True)
+    else:
+        df = clean_data_table
+
+    df = df.sort_values(
+        by=['Corrected', 'Season', 'Episode'], 
+        ascending=[True, True, True], 
+        ignore_index=True
+    )
+
+    # check for duplicates among the corrected files
+    check_for_duplicates = df[df.duplicated(subset=['Corrected'], keep=False)]
+    if not check_for_duplicates.empty:
+        conflicts = check_for_duplicates['Corrected'].unique()
+        
+        ui.print_log("❌ Error: Filename conflict detected!")
+        ui.print_log("Multiple files will end up with the exact same name, which would cause overwrites.")
+        ui.print_log(f"⚠️ Conflicting names: {', '.join(conflicts)}")
+        
+        for i in conflicts:
+            fichiers_originaux = conflicts[conflicts['Corrected'] == i]['Original'].tolist()
+            ui.print_log(f"   - '{i}' is generated by: {', '.join(fichiers_originaux)}")
+            
+        sys.exit(1)
+
     return df

@@ -69,10 +69,9 @@ MAIL_PSWD = "your_app_password_here"
 Run the script via the command line. You have a few operational modes:
 
 ### 1. Default (Rename & Move)
-
 Scans the configured download folder, renames the files, and moves them to the respective Movie or TV Show folders.
 
-```Bash
+```bash
 python main.py
 ```
 
@@ -81,12 +80,14 @@ python main.py
 Renames files in the configured download folder but does not move them.
 
 ```Bash
-python main.py --rename
+python main.py --only_rename
+python main.py -r
 ```
 Tip: You can target a specific folder outside of your configuration by providing a path:
 
 ```Bash
-python main.py --rename --path="path/to/custom/folder"
+python main.py --only_rename --path="path/to/custom/folder"
+python main.py -r --path="path/to/custom/folder"
 ```
 
 ### 3. Move Only
@@ -94,12 +95,30 @@ python main.py --rename --path="path/to/custom/folder"
 Moves already cleanly named files from the download folder into the Movie/TV Show folders.
 
 ```Bash
-python main.py --move
+python main.py --only_move
+python main.py -m
+```
+--- 
+
+### ⚙️ Options
+You can customize the script's behavior by appending the following flags to your command. These flags can be combined as needed:
+
+* **`-a`, `--auto`** : Runs the entire script automatically without asking for user confirmation before renaming or moving the files.
+* **`-i`, `--ai`** : Enables the Gemini AI fallback to intelligently parse and correct highly obfuscated filenames. *(Requires `GEMINI_API_KEY` to be set in `config.py`)*
+* **`-l`, `--log`** : Suppresses terminal output and writes all console messages to a dedicated log file instead.
+* **`-e`, `--mail`** : Sends an automated email notification if a critical error occurs during execution. *(Requires `MAIL` and `MAIL_PSWD` to be set in `config.py`)*
+* **`--path="<path>"`** : Targets a specific folder for the `--only_rename` option.
+* **`-v`, `--verbose`** : Display the detailed error messages.
+
+**Example usage with options:**
+```bash
+python main.py --auto --ai --log
 ```
 
 ### ⚠️ Notes
-- Supported Extensions: .mkv, .mp4, .avi, .mov, .wmv, .m4v
-- Ensure you have read/write permissions for the directories configured in your config.py.
+* **Supported Extensions:** `.mkv`, `.mp4`, `.avi`, `.mov`, `.wmv`, `.m4v`
+* **Permissions:** Ensure you have read/write permissions for the directories configured in your `config.py`.
+* **Conflicts:** You cannot use `--only_move` and `--only_rename` at the same time. To perform both actions sequentially, run the script without either flag.
 
 ## 📚 Guides & Tutorials
 
