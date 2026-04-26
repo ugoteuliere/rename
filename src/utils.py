@@ -226,27 +226,36 @@ def get_corrected_media_filenames(messy_data_table, clean_data_table):
     
     new_clean_data_rows = []
     for index, file in messy_data_table.iterrows():
+
+        ui.print_log(f"🔃 Analysing file {file['File']}\n")
+
         if file['Media'] == "movie": 
-            corrected_name = correct_movie_filename(file) 
-            new_clean_data_rows.append({
-                'Original': file['File'],
-                'Corrected': corrected_name,
-                'Path': file['Path'],
-                'Media': file['Media'],
-                'Season': None,
-                'Episode': None   
-            })
+            corrected_name = correct_movie_filename(file)
+            if corrected_name != None:
+                new_clean_data_rows.append({
+                    'Original': file['File'],
+                    'Corrected': corrected_name,
+                    'Path': file['Path'],
+                    'Media': file['Media'],
+                    'Season': None,
+                    'Episode': None   
+                })
+            else :
+                ui.print_log(f"⚠️ No Match Found for file : {file['File']}\n\n")
 
         elif file['Media'] == "tv": 
             corrected_name, season, episode = correct_tv_show_filename(file) 
-            new_clean_data_rows.append({
-                'Original': file['File'],
-                'Corrected': corrected_name,
-                'Path': file['Path'],
-                'Media': file['Media'],
-                'Season': season,
-                'Episode': episode
-            })
+            if corrected_name != None:
+                new_clean_data_rows.append({
+                    'Original': file['File'],
+                    'Corrected': corrected_name,
+                    'Path': file['Path'],
+                    'Media': file['Media'],
+                    'Season': season,
+                    'Episode': episode
+                })
+            else :
+                ui.print_log(f"⚠️ No Match Found for file : {file['File']}\n\n")
         else:
             ui.print_log("Ignored : " + file['File'] + "\n")
         
@@ -272,7 +281,7 @@ def get_corrected_media_filenames(messy_data_table, clean_data_table):
         
         ui.print_log("❌ Error: Filename conflict detected!")
         ui.print_log("Multiple files will end up with the exact same name, which would cause overwrites.")
-        ui.print_log(f"⚠️ Conflicting names: {', '.join(conflicts)}")
+        ui.print_log(f"⚠️ Conflicting names: {', '.join(map(str,conflicts))}")
         
         for i in conflicts:
             fichiers_originaux = check_for_duplicates[check_for_duplicates['Corrected'] == i]['Original'].tolist()
@@ -281,3 +290,13 @@ def get_corrected_media_filenames(messy_data_table, clean_data_table):
         sys.exit(1)
 
     return df
+
+def has_files_to_rename(data_table):
+    data_empty = data_table.empty
+    if not data_empty:
+        data_empty = True
+        for _, row in data_table.iterrows(): 
+            if row['Original'] != row['Corrected']:
+                data_empty = False
+                continue
+    return not data_empty
