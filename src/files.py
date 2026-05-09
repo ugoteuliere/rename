@@ -98,8 +98,9 @@ def rename_media_files(clean_data_table):
     already_clean_files_count = 0
 
     for index, row in clean_data_table.iterrows():
-        if row['Corrected'] == None:
-            ui.print_log(f"⏭ Ignored (not found) : {row['Original']}")
+
+        if pd.isna(row['Corrected']):
+            ui.print_log(f"\n⏭   Ignored (not found) : {row['Original']}")
             continue
             
         original_path = Path(str(row['Path'])).resolve()

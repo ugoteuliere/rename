@@ -277,6 +277,9 @@ def get_corrected_media_filenames(messy_data_table, clean_data_table):
     failed_files = []
     
     for index, file in messy_data_table.iterrows():
+
+        ui.print_log(f"🔃 Analysing file {file['File']}\n")
+
         if file['Media'] == "movie": 
             corrected_name = correct_movie_filename(file) 
             season, episode = None, None
@@ -338,3 +341,13 @@ def get_corrected_media_filenames(messy_data_table, clean_data_table):
             ui.print_log(f" - {fail['Original']} | Skipped due to: {fail['Reason']}")
             
     return df
+
+def has_files_to_rename(data_table):
+    data_empty = data_table.empty
+    if not data_empty:
+        data_empty = True
+        for _, row in data_table.iterrows(): 
+            if row['Original'] != row['Corrected']:
+                data_empty = False
+                continue
+    return not data_empty

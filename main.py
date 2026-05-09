@@ -7,26 +7,28 @@ def main():
         # verify environment
         args = ui.parse_arguments()
         
-        if not(args.path):
+        if not args.path:
             utils.verify_folders()
         
         # analyse folder
         messy_data_table, clean_data_table = files.search_media_files(args.path)
 
         # find correct names and rename the files 
-        if not(args.only_move):
-            if not(messy_data_table.empty):
-                clean_data_table = utils.get_corrected_media_filenames(messy_data_table,clean_data_table)
+        if not args.only_move:
+            if not messy_data_table.empty:
+                clean_data_table = utils.get_corrected_media_filenames(messy_data_table, clean_data_table)
+
+            if messy_data_table.empty or not utils.has_files_to_rename(clean_data_table):
+                ui.print_log("❌ No media files to rename\n")
+            else:
                 ui.display_corrected_filenames(clean_data_table)
                 ui.user_confirmation("rename the files")
                 clean_data_table = files.rename_media_files(clean_data_table)
-            else: 
-                ui.print_log("❌ No media files to rename\n")
 
         # sort the files and move them to the correct folder
-        if not(args.only_rename):
+        if not args.only_rename:
             # sort and move the files
-            if not(clean_data_table.empty):
+            if not clean_data_table.empty:
                 paths = files.sort_media_files(clean_data_table)
                 ui.display_sorted_files(paths)
                 ui.user_confirmation("move the files to the correct folder")
