@@ -5,7 +5,7 @@ import PTN
 import pandas as pd
 from pathlib import Path
 from src import ui, api, mail
-from src.ui import AI_FALLBACK_ENABLED, print_error
+from src.ui import AI_FALLBACK_ENABLED, print_error, print_log
 from data.data import TAGS, TLDS
 
 import config
@@ -83,75 +83,122 @@ def add_new_tags(missing_tags):
         ui.print_log(f" ❌ Error : Impossible to find TAGS list {DATA_FILE.name}")
 
 def format_season_and_episode(season, episode):
-    if float(season)/10.0 < 1.0 :
+    try:
+        season = int(season)
+        episode = int(episode)
+    except (ValueError, TypeError):
+        raise ValueError("Parsing of season or episode failed.")
+
+    if season < 10:
         season = "0" + str(season)
-    else : 
+    else: 
         season = str(season)
 
-    if float(episode)/10.0 < 1.0 :
+    if episode < 10:
         episode = "0" + str(episode)
-    else :
+    else:
         episode = str(episode)
 
-    return season,episode
+    return season, episode
 
 def correct_movie_filename(file):
-    name = file['Parse'][0]
-    year = file['Parse'][1]
+    global AI_FALLBACK_ENABLED
     
-    success, title, year, original_language = api.api_call(name, year, "en-US", "movie")
-    if not success: 
-        name = file['Clean'][0]
-        year = file['Clean'][1]
+    corrected_name = None
+
+    try:
+        name = file['Parse'][0]
+        year = file['Parse'][1]
         
         success, title, year, original_language = api.api_call(name, year, "en-US", "movie")
-        if not success and AI_FALLBACK_ENABLED:
-            success, title,year,original_language,_ = api.gemini_api_call(file)
-    
-    if success and original_language == "fr" or original_language == "fr-FR":
-        success_fr,title_fr, year_fr, _ = api.api_call(name, year, "fr-FR", "movie")
-        if success_fr:
-            title = title_fr 
-            year = year_fr
+        
+        if not success: 
+            name = file['Clean'][0]
+            year = file['Clean'][1]
+            
+            success, title, year, original_language = api.api_call(name, year, "en-US", "movie")
+            
+            if not success and AI_FALLBACK_ENABLED:
+                success, title, year, original_language, _ = api.gemini_api_call(file)
+        
+        if success and original_language in ["fr", "fr-FR"]:
+            success_fr, title_fr, year_fr, _ = api.api_call(name, year, "fr-FR", "movie")
+            if success_fr:
+                title = title_fr 
+                year = year_fr
 
-    if success:
-        new_file_name = title + ' (' + year + ')'
-        corrected_name = new_file_name.replace(':', ' -')
-    else:
+        if success:
+            new_file_name = f"{title} ({year})"
+            corrected_name = new_file_name.replace(':', ' -')
+        else:
+            raise LookupError("API calls failed to find a match.")
+            
+    except Exception as e:
+        failed_file = file.get('File', 'Unknown File')
+
+        error_message = (
+            f"Impossible to rename the following file: {failed_file}\n\n"
+            f"An error occurred while trying to rename the file\n\n"
+            f"⤷ Error logs: {e}\n"
+        )
+        
+        print_log(error_message)
+        mail.send_email(error_message)
+        
         corrected_name = None
-        mail.send_email(f"The following media file does not provide enough informations to be renamed successfully: {file['File']}")
 
     return corrected_name
 
 def correct_tv_show_filename(file):
     global AI_FALLBACK_ENABLED
-    name    = file['Parse'][0]
-    year    = file['Parse'][1]
-    season  = file['Parse'][2]
-    episode = file['Parse'][3]
 
-    season,episode = format_season_and_episode(season,episode)
-    
-    success, title, _, original_language = api.api_call(name, year, "en-US", "tv")
-    if not success:
-        name = file['Clean'][0]
-        year = file['Clean'][1]
+    corrected_name = None
+    season = None
+    episode = None
+
+    try :
+        name    = file['Parse'][0]
+        year    = file['Parse'][1]
+        season  = file['Parse'][2]
+        episode = file['Parse'][3]
+
+        season,episode = format_season_and_episode(season,episode)
         
         success, title, _, original_language = api.api_call(name, year, "en-US", "tv")
-        if not success and AI_FALLBACK_ENABLED:
-            success, title, _, _, _ = api.gemini_api_call(file)
-        
-    if success and original_language == "fr" or original_language == "fr-FR":
-        success_fr, title_fr, _, _ = api.api_call(name, year, "fr-FR", "tv")
-        if success_fr:
-            title = title_fr
+        if not success:
+            name = file['Clean'][0]
+            year = file['Clean'][1]
+            
+            success, title, _, original_language = api.api_call(name, year, "en-US", "tv")
+            if not success and AI_FALLBACK_ENABLED:
+                success, title, _, _, _ = api.gemini_api_call(file)
+            
+        if success and original_language in ["fr", "fr-FR"]:
+            success_fr, title_fr, _, _ = api.api_call(name, year, "fr-FR", "tv")
+            if success_fr:
+                title = title_fr
 
-    if success:
-        new_file_name = title + ' S' + season + 'E' + episode
-        corrected_name = new_file_name.replace(':', ' -')
-    else:
+        if success:
+            new_file_name = title + ' S' + season + 'E' + episode
+            corrected_name = new_file_name.replace(':', ' -')
+        else:
+            raise LookupError("API calls failed to find a match.")
+    
+    except Exception as e:
+        failed_file = file.get('File', 'Unknown File')
+
+        error_message = (
+            f"Impossible to rename the following file: {failed_file}\n\n"
+            f"An error occurred while trying to rename the file\n\n"
+            f"⤷ Error logs: {e}\n"
+        )
+        
+        print_log(error_message)
+        mail.send_email(error_message)
+
         corrected_name = None
-        mail.send_email(f"The following media file does not provide enough informations to be renamed successfully: {file['File']}")
+        season = None
+        episode = None
 
     return corrected_name, season, episode
 
@@ -220,37 +267,42 @@ def clean_filename(filename):
     
     return clean_title, year
 
+import pandas as pd
+
 def get_corrected_media_filenames(messy_data_table, clean_data_table):
     
     ui.print_log(f"\nAnalysing {len(messy_data_table)} files. Please wait...\n")
     
     new_clean_data_rows = []
+    failed_files = []
+    
     for index, file in messy_data_table.iterrows():
         if file['Media'] == "movie": 
             corrected_name = correct_movie_filename(file) 
-            new_clean_data_rows.append({
-                'Original': file['File'],
-                'Corrected': corrected_name,
-                'Path': file['Path'],
-                'Media': file['Media'],
-                'Season': None,
-                'Episode': None   
-            })
-
+            season, episode = None, None
         elif file['Media'] == "tv": 
             corrected_name, season, episode = correct_tv_show_filename(file) 
+        else:
+            ui.print_log("Ignored : " + file['File'] + "\n")
+            continue
+            
+        if corrected_name is None:
+            failed_files.append({
+                'Original': file['File'], 
+                'Reason': 'API or parsing failed'
+            })
+        else:
             new_clean_data_rows.append({
                 'Original': file['File'],
                 'Corrected': corrected_name,
                 'Path': file['Path'],
                 'Media': file['Media'],
                 'Season': season,
-                'Episode': episode
+                'Episode': episode   
             })
-        else:
-            ui.print_log("Ignored : " + file['File'] + "\n")
-        
+            
     new_clean_data_rows_df = pd.DataFrame(new_clean_data_rows)
+    
     if not new_clean_data_rows_df.empty:
         if clean_data_table.empty:
             df = new_clean_data_rows_df
@@ -259,25 +311,30 @@ def get_corrected_media_filenames(messy_data_table, clean_data_table):
     else:
         df = clean_data_table
 
-    df = df.sort_values(
-        by=['Corrected', 'Season', 'Episode'], 
-        ascending=[True, True, True], 
-        ignore_index=True
-    )
+    # sort and check duplicates
+    if not df.empty:
+        df = df.sort_values(
+            by=['Corrected', 'Season', 'Episode'], 
+            ascending=[True, True, True], 
+            ignore_index=True
+        )
 
-    # check for duplicates among the corrected files
-    check_for_duplicates = df[df.duplicated(subset=['Corrected'], keep=False)]
-    if not check_for_duplicates.empty:
-        conflicts = check_for_duplicates['Corrected'].unique()
-        
-        ui.print_log("❌ Error: Filename conflict detected!")
-        ui.print_log("Multiple files will end up with the exact same name, which would cause overwrites.")
-        ui.print_log(f"⚠️ Conflicting names: {', '.join(conflicts)}")
-        
-        for i in conflicts:
-            fichiers_originaux = conflicts[conflicts['Corrected'] == i]['Original'].tolist()
-            ui.print_log(f"   - '{i}' is generated by: {', '.join(fichiers_originaux)}")
+        # check for duplicates among the corrected files
+        check_for_duplicates = df[df.duplicated(subset=['Corrected'], keep=False)]
+        if not check_for_duplicates.empty:
+            conflicts = check_for_duplicates['Corrected'].unique()
+            for i in conflicts:
+                fichiers_originaux = check_for_duplicates[check_for_duplicates['Corrected'] == i]['Original'].tolist()
+                for original_file in fichiers_originaux:
+                    failed_files.append({
+                        'Original': original_file,
+                        'Reason': f"Conflict: Multiple files resolve to '{i}'"
+                    })
+            df = df.drop_duplicates(subset=['Corrected'], keep=False)
+
+    if failed_files:
+        ui.print_log("\n--- Summary of Skipped Files ---")
+        for fail in failed_files:
+            ui.print_log(f" - {fail['Original']} | Skipped due to: {fail['Reason']}")
             
-        sys.exit(1)
-
     return df

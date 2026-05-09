@@ -97,14 +97,15 @@ TV_SHOWS_FOLDER = "Séries"
 NOT_SORTED_MEDIA_FILES_FOLDER = ".download"
 
 @pytest.fixture
-def setup(monkeypatch, tmp_path):
+def setup(tmp_path, monkeypatch):
     dossier_download = tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER
     dossier_download.mkdir()
     (tmp_path / MOVIES_FOLDER).mkdir()
     (tmp_path / TV_SHOWS_FOLDER).mkdir()
     
-    monkeypatch.setattr("src.utils.PATH", str(tmp_path))
-    monkeypatch.setattr("src.files.PATH", str(tmp_path))
+    monkeypatch.setattr("src.files.MOVIES_FOLDER", str(tmp_path / MOVIES_FOLDER))
+    monkeypatch.setattr("src.files.TV_SHOWS_FOLDER", str(tmp_path / TV_SHOWS_FOLDER))
+    monkeypatch.setattr("src.files.NOT_SORTED_MEDIA_FILES_FOLDER", str(tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER))
     
     for nom in fichiers:
         (dossier_download / nom).touch()
@@ -122,8 +123,9 @@ def check_parsed_media_type (media_files,filename,media):
             i=i+1
 
 def test_search_media_files(setup):
-    media_files = files.search_media_files()
+    media_files, clean_files = files.search_media_files(None)
     assert len(media_files) == 30
+    assert len(clean_files) == 3
     check_parsed_media_type (media_files,"Inception.2010.1080p.BluRay.x264.VFF.AC3-GROUP.mkv","movie")
     check_parsed_media_type (media_files,"Arcane.S01E01.1080p.NF.WEBRip.DDP5.1.x264.MULTI.VF2-GRP.mkv","tv")
     check_parsed_media_type (media_files,"Everything.Everywhere.All.at.Once.2022.2160p.WEB-DL.x265.10bit.HDR.EAC3.5.1.VFF-TEAM.mkv","movie")
@@ -141,7 +143,7 @@ def test_api_call_errors():
     assert api.api_call(name, year, "en-US", media_type) == [False, None, None, None]
 
 def test_get_corrected_media_filenames(setup):
-    media_files, clean_files = files.search_media_files("nothing")
+    media_files, clean_files = files.search_media_files(None)
     corrected_filenames = utils.get_corrected_media_filenames(media_files,clean_files)
     for index,movie in corrected_filenames.iterrows():
         i = 0
@@ -153,7 +155,7 @@ def test_get_corrected_media_filenames(setup):
             i=i+1
 
 def test_rename_media_files(setup):
-    media_files, clean_files = files.search_media_files("nothing")
+    media_files, clean_files = files.search_media_files(None)
     corrected_filenames = utils.get_corrected_media_filenames(media_files,clean_files)
     files.rename_media_files(corrected_filenames)
 
@@ -176,7 +178,9 @@ donnees_test_gemini_api = [(
 ]
 
 @pytest.mark.parametrize("media_info, expected", donnees_test_gemini_api)
-def test_gemini_api_call(media_info, expected):
+def test_gemini_api_call(media_info, expected, monkeypatch):
+    monkeypatch.setattr(api, "VERBOSE_ENABLED", True)
+    monkeypatch.setattr(api, "TAGS", [r'480p', r'720p'])
     try:
         resultat = api.gemini_api_call(media_info)
         assert resultat == expected
@@ -217,9 +221,10 @@ def test_file_impossible_to_rename_and_mail():
         'Parse': ["apjfpjkd",""],
         'Media': "movie"
     }])
+    clean_files = pd.DataFrame([])
     
     try:
-        corrected_filenames = utils.get_corrected_media_filenames(media_files)
+        corrected_filenames = utils.get_corrected_media_filenames(media_files,clean_files)
         assert corrected_filenames.iloc[0]['Corrected'] == None
         assert corrected_filenames.iloc[0]['Original'] == "apjfpjkd.mkv"
     except RuntimeError as e:
@@ -550,7 +555,6 @@ def test_remove_empty_folders_raises_runtime_error(tmp_path):
 @patch('src.files.remove_empty_folders')
 @patch('src.ui.print_log')
 @patch('src.files.move_file')
-@patch('src.files.PATH', 'fake_root_dir') # Faking the global variable
 @patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER', 'unsorted_media') # Faking the global variable
 def test_move_media_files_success(mock_move_file, mock_print_log, mock_remove_empty_folders):
     # 1. SETUP
@@ -586,7 +590,6 @@ def test_move_media_files_success(mock_move_file, mock_print_log, mock_remove_em
 @patch('src.files.remove_empty_folders')
 @patch('src.ui.print_log')
 @patch('src.files.move_file')
-@patch('src.files.PATH', 'fake_root')
 @patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER', 'unsorted')
 def test_move_media_files_empty_list(mock_move_file, mock_print_log, mock_remove_empty_folders):
     # 1. SETUP
@@ -607,7 +610,6 @@ def test_move_media_files_empty_list(mock_move_file, mock_print_log, mock_remove
 @patch('src.files.remove_empty_folders')
 @patch('src.ui.print_log')
 @patch('src.files.move_file')
-@patch('src.files.PATH', 'fake_root')
 @patch('src.files.NOT_SORTED_MEDIA_FILES_FOLDER', 'unsorted')
 def test_move_media_files_stops_on_error(mock_move_file, mock_print_log, mock_remove_empty_folders):
     # 1. SETUP
@@ -693,57 +695,55 @@ def patch_globals(func):
 
 @patch_globals
 def test_sort_media_files_success(mock_print, tmp_path):
-    # 1. SETUP
-    with patch('src.files.PATH', str(tmp_path)):
+    # We dynamically generate a downloads folder path that matches the OS
+    dl_dir = tmp_path / 'downloads'
+    
+    # Create a fake Pandas DataFrame using our OS-safe paths
+    data = {
+        'Path': [
+            str(dl_dir / 'movie1.mkv'),      # Standard movie
+            str(dl_dir / 'show1.mp4'),       # Standard TV Show
+            str(dl_dir / 'weird_show.avi'),  # TV Show missing SxxExx
+            str(dl_dir / 'junk.txt')         # Unrecognized media
+        ],
+        'Media': ['movie', 'tv', 'tv', 'unknown'],
+        'Corrected': [
+            'The Matrix (1999)', 
+            'Breaking Bad S01E05', 
+            'Weird Show Name', 
+            'Junk File'
+        ]
+    }
+    df = pd.DataFrame(data)
+    
+    # 2. ACTION
+    result_paths = files.sort_media_files(df)
+    
+    # 3. VERIFY OUTPUT LIST
+    assert len(result_paths) == 3 # The 'unknown' one should have been skipped!
+    
+    # Unpack the results
+    movie_old, movie_new = result_paths[0]
+    _, tv_new = result_paths[1]
+    _, weird_tv_new = result_paths[2]
+    
+    # Check the Movie paths (comparing Path objects, which ignores slash direction!)
+    assert movie_old == dl_dir / 'movie1.mkv'
+    assert movie_new == tmp_path / 'Movies' / 'The Matrix (1999).mkv'
+    
+    # Check the Standard TV Show paths
+    assert tv_new == tmp_path / 'TV Shows' / 'Breaking Bad' / 'Saison 01' / 'Breaking Bad S01E05.mp4'
+    
+    # Check the Fallback TV Show paths
+    assert weird_tv_new == tmp_path / 'TV Shows' / 'Weird Show Name' / 'Unknown' / 'Weird Show Name.avi'
+    
+    # 4. VERIFY FOLDERS WERE CREATED
+    assert (tmp_path / 'Movies').exists()
+    assert (tmp_path / 'TV Shows' / 'Breaking Bad' / 'Saison 01').exists()
+    
+    # 5. VERIFY UI LOGS
+    mock_print.assert_called_once_with("⏭ Ignored (not found) : Junk File.txt")
         
-        # We dynamically generate a downloads folder path that matches the OS
-        dl_dir = tmp_path / 'downloads'
-        
-        # Create a fake Pandas DataFrame using our OS-safe paths
-        data = {
-            'Path': [
-                str(dl_dir / 'movie1.mkv'),      # Standard movie
-                str(dl_dir / 'show1.mp4'),       # Standard TV Show
-                str(dl_dir / 'weird_show.avi'),  # TV Show missing SxxExx
-                str(dl_dir / 'junk.txt')         # Unrecognized media
-            ],
-            'Media': ['movie', 'tv', 'tv', 'unknown'],
-            'Corrected': [
-                'The Matrix (1999)', 
-                'Breaking Bad S01E05', 
-                'Weird Show Name', 
-                'Junk File'
-            ]
-        }
-        df = pd.DataFrame(data)
-        
-        # 2. ACTION
-        result_paths = files.sort_media_files(df)
-        
-        # 3. VERIFY OUTPUT LIST
-        assert len(result_paths) == 3 # The 'unknown' one should have been skipped!
-        
-        # Unpack the results
-        movie_old, movie_new = result_paths[0]
-        _, tv_new = result_paths[1]
-        _, weird_tv_new = result_paths[2]
-        
-        # Check the Movie paths (comparing Path objects, which ignores slash direction!)
-        assert movie_old == dl_dir / 'movie1.mkv'
-        assert movie_new == tmp_path / 'Movies' / 'The Matrix (1999).mkv'
-        
-        # Check the Standard TV Show paths
-        assert tv_new == tmp_path / 'TV Shows' / 'Breaking Bad' / 'Saison 01' / 'Breaking Bad S01E05.mp4'
-        
-        # Check the Fallback TV Show paths
-        assert weird_tv_new == tmp_path / 'TV Shows' / 'Weird Show Name' / 'Unknown' / 'Weird Show Name.avi'
-        
-        # 4. VERIFY FOLDERS WERE CREATED
-        assert (tmp_path / 'Movies').exists()
-        assert (tmp_path / 'TV Shows' / 'Breaking Bad' / 'Saison 01').exists()
-        
-        # 5. VERIFY UI LOGS
-        mock_print.assert_called_once_with("⏭ Ignored (not found) : Junk File.txt")
 
 
 @patch_globals

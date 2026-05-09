@@ -4,7 +4,7 @@ import requests
 import urllib.parse
 from google import genai
 from src.mail import send_email
-from src.ui import print_log, print_error
+from src.ui import print_log, print_error, VERBOSE_ENABLED
 from data.data import TAGS
 
 import config

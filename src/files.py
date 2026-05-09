@@ -155,7 +155,7 @@ def sort_media_files(clean_data_table):
 
             if match:
                 season_number = match.group(1) 
-                season_folder = f"Saison {season_number.zfill(2)}" 
+                season_folder = f"Season {season_number.zfill(2)}" 
             else:
                 season_folder = "Unknown" 
 
