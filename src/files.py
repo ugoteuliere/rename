@@ -182,13 +182,17 @@ def move_file(old_path, new_path):
     old_abs = old_path.resolve()
     new_abs = new_path.resolve()
 
+    if new_abs.exists():
+        error_msg = f" ❌ Conflict: Target file already exists at {new_abs}"
+        raise FileExistsError(error_msg)
+
     safe_old = make_safe_path(old_abs)
     safe_new = make_safe_path(new_abs)
 
     try:
         shutil.move(safe_old, safe_new) 
     except Exception as e:
-        raise RuntimeError(ui.print_error(f" ❌ Error: Impossible to move the file \n Old path {safe_old} \n New path {safe_new}",e))
+        raise RuntimeError(ui.print_error(f" ❌ Error: Impossible to move the file \n Old path {safe_old} \n New path {safe_new}", e))
 
 def remove_empty_folders(target_path):
     if not os.path.exists(target_path):
@@ -205,12 +209,22 @@ def remove_empty_folders(target_path):
             except OSError as e:
                 raise RuntimeError(ui.print_error(f" ❌ Error: An error occurred while deleting {dirpath}",e))
 
-def move_media_files (paths):
+def move_media_files(paths):
     success_count = 0
+    failed_moves = []
+
     for old, new in paths:
-        move_file(old, new)
-        success_count += 1
+        try:
+            move_file(old, new)
+            success_count += 1
+        except (FileExistsError, RuntimeError) as e:
+            ui.print_log(f" ⚠️ Skipping {old.name}: {e} \n")
+            failed_moves.append(old.name)
             
-    ui.print_log(f"\n✅ {success_count} files have been successfully sorted and moved!")
+    if success_count>0 :
+        ui.print_log(f"\n✅ {success_count} files moved successfully!")
+    
+    if failed_moves:
+        ui.print_log(f"❌ {len(failed_moves)} files could not be moved")
 
     remove_empty_folders(Path(NOT_SORTED_MEDIA_FILES_FOLDER))

@@ -136,6 +136,6 @@ def gemini_api_call(media_info):
             print_log(" ❌ Error: Impossible to read the json data from Gemini API \n")
             
     except json.JSONDecodeError as e:
-        raise RuntimeError(print_error(" ❌ Error: Failed to parse Gemini response as JSON",e))
+        print_error(" ❌ Error: Failed to parse Gemini response as JSON",e)
         
     return [False, None, None, None, None]

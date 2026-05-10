@@ -241,6 +241,30 @@ def display_sorted_files(paths):
         rich_print_log(table_tv)
         rich_print_log()
 
+def display_skipped_filenames(failed_files):
+    if not failed_files:
+        return
+
+    rich_print_log()
+    
+    table_skipped = Table(
+        title="❌ [bold red]Skipped Files[/bold red]", 
+        title_justify="left",
+        border_style="red"
+    )
+    
+    table_skipped.add_column("Original Filename", style="white", no_wrap=True, max_width=100, overflow="ellipsis")
+    table_skipped.add_column("Reason for Failure", style="yellow")
+
+    for fail in failed_files:
+        table_skipped.add_row(
+            str(fail.get('Original', 'Unknown')), 
+            str(fail.get('Reason', 'No reason provided'))
+        )
+
+    rich_print_log(table_skipped)
+    rich_print_log()
+
 def user_confirmation(message):
     if not(AUTO_ENABLED):
         console = Console()

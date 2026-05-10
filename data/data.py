@@ -25,7 +25,7 @@ TAGS = [
     r'repack', r'proper', r'limited', r'special', r'edition', r'uncut',
 
     # === Autres ===
-    r'lihdl', r'fw', r'final', r'group', r'rls', r'dl', r'ddp5\.1', r'ddp51', r'team', r'ddp5', r'frg', r'grp', r'amzn', r'nf', r'DDLBase', r'EPSiLON', r'FraMeSToR', r'HYBRID', r'BYNDR', r'PmP', r'MMCK'
+    r'lihdl', r'fw', r'final', r'group', r'rls', r'dl', r'ddp5\.1', r'ddp51', r'team', r'ddp5', r'frg', r'grp', r'amzn', r'nf', r'DDLBase', r'EPSiLON', r'FraMeSToR', r'HYBRID', r'BYNDR', r'PmP', r'MMCK', r'(?:saison|season|s)[.\s-]*(\d+)', r'(?:episode|ep|e)[.\s-]*(\d+)'
 ]
 
 TLDS = [
