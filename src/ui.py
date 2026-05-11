@@ -159,8 +159,8 @@ def display_corrected_filenames(clean_data_table):
         rich_print_log()
         table_movies = Table(title="🍿 [bold magenta]Movies[/bold magenta]", title_justify="left")
         
-        table_movies.add_column("Original", style="white", no_wrap=True, max_width=40, overflow="ellipsis")
-        table_movies.add_column("Corrected", style="green", no_wrap=True, max_width=40, overflow="ellipsis")
+        table_movies.add_column("Original", style="white", no_wrap=True, max_width=60, overflow="ellipsis")
+        table_movies.add_column("Corrected", style="green", no_wrap=True, max_width=60, overflow="ellipsis")
 
         for _, row in movies_df.iterrows():
             if row['Original'] != row['Corrected']:
@@ -173,10 +173,10 @@ def display_corrected_filenames(clean_data_table):
         rich_print_log()
         table_tv = Table(title="📺 [bold blue]TV Shows[/bold blue]", title_justify="left")
         
-        table_tv.add_column("Original", style="white", no_wrap=True, max_width=40, overflow="ellipsis")
+        table_tv.add_column("Original", style="white", no_wrap=True, max_width=60, overflow="ellipsis")
         table_tv.add_column("Season", justify="center", style="yellow")
         table_tv.add_column("Épisode", justify="center", style="yellow")
-        table_tv.add_column("Corrected", style="green", no_wrap=True, max_width=40, overflow="ellipsis")
+        table_tv.add_column("Corrected", style="green", no_wrap=True, max_width=60, overflow="ellipsis")
 
         for _, row in tv_shows_df.iterrows():
             if row['Original'] != row['Corrected']:

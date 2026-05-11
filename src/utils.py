@@ -5,12 +5,14 @@ import PTN
 import pandas as pd
 from pathlib import Path
 from src import ui, api, mail
-from data.data import TAGS, TLDS
+from data.data import TAGS, TLDS, QUALITY_PATTERNS, RESOLUTION_PATTERNS
 
 import config
 MOVIES_FOLDER = getattr(config, 'MOVIES_FOLDER', None)
 TV_SHOWS_FOLDER = getattr(config, 'TV_SHOWS_FOLDER', None)
 NOT_SORTED_MEDIA_FILES_FOLDER = getattr(config, 'NOT_SORTED_MEDIA_FILES_FOLDER', None)
+RESOLUTION = getattr(config, 'RESOLUTION', False)
+QUALITY = getattr(config, 'QUALITY', False)
 
 DATA_FILE = Path("../data/data.py")
 
@@ -100,6 +102,25 @@ def parse_season_episode(season, episode, filename):
 
     return s, e
 
+def parse_resolution_quality(resolution_ptn,quality_ptn,resolution_clean,quality_clean):
+    # resolution
+    if resolution_ptn and str(resolution_ptn).strip():
+        final_resolution = resolution_ptn
+    elif resolution_clean and str(resolution_clean).strip():
+        final_resolution = resolution_clean
+    else:
+        final_resolution = None
+
+    # quality
+    if quality_ptn and str(quality_ptn).strip():
+        final_quality = quality_ptn
+    elif quality_clean and str(quality_clean).strip():
+        final_quality = quality_clean
+    else:
+        final_quality = None
+
+    return final_resolution, final_quality
+
 def format_season_and_episode(season, episode):
     try:
         season = int(season)
@@ -130,11 +151,13 @@ def sort_media_dataframe(df):
 
 def correct_movie_filename(file):
     
-    corrected_name = None
+    new_filename = None
 
     try:
         name = file['Parse'][0]
         year = file['Parse'][1]
+
+        resolution,quality = parse_resolution_quality(file['Parse'][2],file['Parse'][3],file['Clean'][2],file['Clean'][3])
         
         success, title, year, original_language = api.api_call(name, year, "en-US", "movie")
         
@@ -152,12 +175,8 @@ def correct_movie_filename(file):
             if success_fr:
                 title = title_fr 
                 year = year_fr
-
-        if success:
-            new_file_name = f"{title} ({year})"
-            corrected_name = new_file_name.replace(':', ' -')
-        else:
-            raise LookupError("API calls failed to find a match.")
+        
+        new_filename = generate_new_movie_filename(success,title,year,resolution,quality)
             
     except Exception as e:
         failed_file = file.get('File', 'Unknown File')
@@ -172,29 +191,28 @@ def correct_movie_filename(file):
         if ui.VERBOSE_ENABLED:  
             ui.print_log(error_message)
         
-        corrected_name = None
+        new_filename = None
 
-    return corrected_name
+    return new_filename
 
 def correct_tv_show_filename(file):
 
-    corrected_name = None
+    new_filename = None
     season = None
     episode = None
 
     try :
-        name    = file['Parse'][0]
-        year    = file['Parse'][1]
-        season  = file['Parse'][2]
-        episode = file['Parse'][3]
+        name             = file['Parse'][0]
+        year             = file['Parse'][1]
 
-        season,episode = parse_season_episode(season,episode,file['File'])
+        season,episode = parse_season_episode(file['Parse'][2],file['Parse'][3],file['File'])
         season,episode = format_season_and_episode(season,episode)
+        resolution,quality = parse_resolution_quality(file['Parse'][4],file['Parse'][5],file['Clean'][2],file['Clean'][3])
         
         success, title, _, original_language = api.api_call(name, year, "en-US", "tv")
         if not success:
-            name = file['Clean'][0]
-            year = file['Clean'][1]
+            name             = file['Clean'][0]
+            year             = file['Clean'][1]
             
             success, title, _, original_language = api.api_call(name, year, "en-US", "tv")
             if not success and ui.AI_FALLBACK_ENABLED:
@@ -205,11 +223,7 @@ def correct_tv_show_filename(file):
             if success_fr:
                 title = title_fr
 
-        if success:
-            new_file_name = title + ' S' + season + 'E' + episode
-            corrected_name = new_file_name.replace(':', ' -')
-        else:
-            raise LookupError("API calls failed to find a match.")
+        new_filename = generate_new_tvshow_filename(success,title,year,season,episode,resolution,quality)
     
     except Exception as e:
         failed_file = file.get('File', 'Unknown File')
@@ -224,11 +238,60 @@ def correct_tv_show_filename(file):
         if ui.VERBOSE_ENABLED:  
             ui.print_log(error_message)
         
-        corrected_name = None
+        new_filename = None
         season = None
         episode = None
 
-    return corrected_name, season, episode
+    return new_filename, season, episode
+
+def generate_new_movie_filename(success, title, year, resolution, quality):
+    is_title_valid = title and str(title).strip()
+
+    if not success or not is_title_valid :
+        raise LookupError("API calls failed or essential metadata (Title) is missing/empty.")
+
+    new_name = title.replace(':', ' -')
+    if year and str(year).strip():
+        new_name += f" ({year})"
+
+    # quality and resolution
+    metadata_parts = []
+    if QUALITY and quality and str(quality).strip():
+        metadata_parts.append(str(quality))
+    if RESOLUTION and resolution and str(resolution).strip():
+        metadata_parts.append(str(resolution))
+    if metadata_parts:
+        new_name += f" [{' '.join(metadata_parts)}]"
+
+    return new_name
+
+def generate_new_tvshow_filename(success, title, year, season, episode, resolution, quality):
+    is_title_valid = title and str(title).strip()
+    is_season_valid = season and str(season).strip()
+    is_episode_valid = episode and str(episode).strip()
+
+    if not success or not is_title_valid or not is_season_valid or not is_episode_valid:
+        raise LookupError("API calls failed or essential metadata (Title, Season, or Episode) is missing/empty.")
+
+    new_name = title.replace(':', ' -')
+    if year and str(year).strip():
+        new_name += f" ({year})"
+
+    # season and episode
+    s_padded = str(season).zfill(2)
+    e_padded = str(episode).zfill(2)
+    new_name += f" - S{s_padded}E{e_padded}"
+
+    # quality and resolution
+    metadata_parts = []
+    if QUALITY and quality and str(quality).strip():
+        metadata_parts.append(str(quality))
+    if RESOLUTION and resolution and str(resolution).strip():
+        metadata_parts.append(str(resolution))
+    if metadata_parts:
+        new_name += f" [{' '.join(metadata_parts)}]"
+
+    return new_name
 
 def remove_url(filename):
     # setup
@@ -259,13 +322,15 @@ def parse_filename(filename):
     media = "tv" if (filename_parsed.get('season') or filename_parsed.get('episode')) else "movie"
     title = str(filename_parsed.get('title')) if filename_parsed.get('title') else ""
     year = str(filename_parsed.get('year')) if filename_parsed.get('year') else ""
+    resolution = str(filename_parsed.get('resolution')) if filename_parsed.get('resolution') else ""
+    quality = str(filename_parsed.get('quality')) if filename_parsed.get('quality') else ""
     if media == "movie" :
-        parse = [title, year]
+        parse = [title, year, resolution, quality]
     else : 
         season = str(filename_parsed.get('season')) if filename_parsed.get('season') else ""
         episode = str(filename_parsed.get('episode')) if filename_parsed.get('episode') else ""
-        parse = [title, year, season, episode]
-    
+        parse = [title, year, season, episode, resolution, quality]
+
     return parse, media
 
 def clean_filename(filename):
@@ -278,6 +343,20 @@ def clean_filename(filename):
     # search for a year patern 
     year_match = re.search(r'\(?((?:19|20)\d{2})\)?', raw_name)
     year = year_match.group(1) if year_match else ""
+
+    resolution = ""
+    for pattern in RESOLUTION_PATTERNS:
+        res_match = re.search(pattern, raw_name, flags=re.IGNORECASE)
+        if res_match:
+            resolution = res_match.group(0)
+            break
+
+    quality = ""
+    for pattern in QUALITY_PATTERNS:
+        qual_match = re.search(pattern, raw_name, flags=re.IGNORECASE)
+        if qual_match:
+            quality = qual_match.group(0)
+            break
 
     # regex filters
     clean_title = re.sub(r'S\d+E\d+', '', filename_without_urls, flags=re.IGNORECASE)
@@ -293,7 +372,7 @@ def clean_filename(filename):
     clean_title = clean_title.replace('.', ' ').replace('_', ' ').replace('-', ' ')
     clean_title = ' '.join(clean_title.split()).strip()
     
-    return clean_title, year
+    return clean_title, year, resolution, quality
 
 import pandas as pd
 

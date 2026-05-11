@@ -16,6 +16,8 @@ def search_media_files(path):
         return None
 
     video_extensions = {'.mkv', '.mp4', '.avi', '.mov', '.wmv', '.m4v'}
+    movie_re = r"^.+? \(\d{4}\)(?: \[[^\]]+\])?$"
+    series_re = r"^.+?(?: \(\d{4}\))? - S\d{2}E\d{2}(?: \[[^\]]+\])?$"
     
     messy_data_table = []
     clean_data_table = []
@@ -27,8 +29,11 @@ def search_media_files(path):
         if file_path.suffix in video_extensions :
             # filters video that already match the format Movie title (Year) or TV Show title SXXEXX
             name_without_ext = file_path.stem.strip()
-            if not re.fullmatch(r"^.+ \(\d{4}\)$", name_without_ext) and not re.fullmatch(r"^.+ S\d{2}E\d{2}$", name_without_ext) :
-                
+
+            is_movie = re.fullmatch(movie_re, name_without_ext)
+            is_series = re.fullmatch(series_re, name_without_ext)
+
+            if not is_movie and not is_series:
                 parse, media = utils.parse_filename(file_path.name)
                 
                 messy_data_table.append({
