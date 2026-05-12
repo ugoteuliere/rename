@@ -4,7 +4,7 @@ import re
 import PTN
 import pandas as pd
 from pathlib import Path
-from src import ui, api, mail
+from src import ui, api, mail, files
 from data.data import TAGS, TLDS, QUALITY_PATTERNS, RESOLUTION_PATTERNS
 
 import config
@@ -102,7 +102,10 @@ def parse_season_episode(season, episode, filename):
 
     return s, e
 
-def parse_resolution_quality(resolution_ptn,quality_ptn,resolution_clean,quality_clean):
+def parse_resolution_quality(resolution_ptn, quality_ptn, resolution_clean, quality_clean, file):
+    if not RESOLUTION and not QUALITY:
+        return None, None
+
     # resolution
     if resolution_ptn and str(resolution_ptn).strip():
         final_resolution = resolution_ptn
@@ -118,6 +121,18 @@ def parse_resolution_quality(resolution_ptn,quality_ptn,resolution_clean,quality
         final_quality = quality_clean
     else:
         final_quality = None
+
+    # scan file
+    if final_resolution is None or final_quality is None:
+        res_file, qual_file = files.get_file_quality_resolution(file)
+        
+        # Update resolution if it was not found previously
+        if final_resolution is None and res_file and str(res_file).strip():
+            final_resolution = res_file
+            
+        # Update quality if it was not found previously
+        if final_quality is None and qual_file and str(qual_file).strip():
+            final_quality = qual_file
 
     return final_resolution, final_quality
 
@@ -157,7 +172,7 @@ def correct_movie_filename(file):
         name = file['Parse'][0]
         year = file['Parse'][1]
 
-        resolution,quality = parse_resolution_quality(file['Parse'][2],file['Parse'][3],file['Clean'][2],file['Clean'][3])
+        resolution,quality = parse_resolution_quality(file['Parse'][2],file['Parse'][3],file['Clean'][2],file['Clean'][3],file['Path'])
         
         success, title, year, original_language = api.api_call(name, year, "en-US", "movie")
         
@@ -207,7 +222,7 @@ def correct_tv_show_filename(file):
 
         season,episode = parse_season_episode(file['Parse'][2],file['Parse'][3],file['File'])
         season,episode = format_season_and_episode(season,episode)
-        resolution,quality = parse_resolution_quality(file['Parse'][4],file['Parse'][5],file['Clean'][2],file['Clean'][3])
+        resolution,quality = parse_resolution_quality(file['Parse'][4],file['Parse'][5],file['Clean'][2],file['Clean'][3],file['Path'])
         
         success, title, _, original_language = api.api_call(name, year, "en-US", "tv")
         if not success:

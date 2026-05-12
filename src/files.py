@@ -4,8 +4,16 @@ import re
 import sys
 import shutil
 import os
+import subprocess
+import json
 from src import ui, utils
-from config import MOVIES_FOLDER, TV_SHOWS_FOLDER, NOT_SORTED_MEDIA_FILES_FOLDER
+from pymediainfo import MediaInfo
+from data.data import QUALITY_PATTERNS, RESOLUTION_PATTERNS
+
+import config
+MOVIES_FOLDER = getattr(config, 'MOVIES_FOLDER', None)
+TV_SHOWS_FOLDER = getattr(config, 'TV_SHOWS_FOLDER', None)
+NOT_SORTED_MEDIA_FILES_FOLDER = getattr(config, 'NOT_SORTED_MEDIA_FILES_FOLDER', None)
 
 def search_media_files(path):
     target_dir = Path(path).resolve() if path is not None else Path(NOT_SORTED_MEDIA_FILES_FOLDER)
@@ -233,3 +241,76 @@ def move_media_files(paths):
         ui.print_log(f"❌ {len(failed_moves)} files could not be moved")
 
     remove_empty_folders(Path(NOT_SORTED_MEDIA_FILES_FOLDER))
+
+def get_file_quality_resolution(file_path):
+    metadata = get_metadata_with_ffprobe(file_path)
+    
+    if not metadata:
+        return None, None
+
+    technical_blob = ""
+    width_map = {
+        3840: "2160p 4k",
+        2560: "1440p",
+        1920: "1080p",
+        1280: "720p",
+        720:  "480p"
+    }
+
+    # scan data recovered by ffprobe
+    streams = metadata.get('streams', [])
+    for stream in streams:
+        width = stream.get('width')
+        if width:
+            res_name = width_map.get(width, "")
+            technical_blob += f" {width}x{stream.get('height')} {res_name} "
+        
+        technical_blob += f" {stream.get('codec_name')} {stream.get('pix_fmt')} {stream.get('color_space')} "
+
+    fmt = metadata.get('format', {})
+    technical_blob += f" {fmt.get('format_name')} "
+    
+    tags = fmt.get('tags', {})
+    for key, value in tags.items():
+        technical_blob += f" {value} "
+    scan_string = technical_blob.replace('_', ' ').replace('.', ' ')
+
+    # detect resolution
+    final_res = None
+    for pattern in RESOLUTION_PATTERNS:
+        match = re.search(pattern, scan_string, flags=re.IGNORECASE)
+        if match:
+            final_res = match.group(0).strip()
+            break
+
+    # detect quality
+    final_qual = None
+    for pattern in QUALITY_PATTERNS:
+        match = re.search(pattern, scan_string, flags=re.IGNORECASE)
+        if match:
+            final_qual = match.group(0).strip()
+            break
+
+    return final_res, final_qual
+
+def get_metadata_with_ffprobe(file_path):
+    # Check if ffprobe is installed on the system
+    if not shutil.which("ffprobe"):
+        print("❌ Error: ffprobe is not installed or not found in System PATH.")
+        return None
+
+    cmd = [
+        "ffprobe", 
+        "-v", "error", 
+        "-show_entries", "stream=width,height,codec_name,pix_fmt,color_space",
+        "-show_entries", "format=format_name,bit_rate,tags",
+        "-of", "json", 
+        file_path
+    ]
+    
+    try:
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        return json.loads(result.stdout)
+    except Exception as e:
+        ui.print_error("❌ Error: An error occured while running ffprobe",e)
+        return None

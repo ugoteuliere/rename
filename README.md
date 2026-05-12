@@ -45,7 +45,22 @@ cd rename
 pip install -r requirements.txt
 ```
 
-### 3. Configure Environment:
+### 3. Install FFmpeg
+To allow the script to scan media files and detect quality/resolution, you must have FFmpeg (which includes ffprobe) installed on your system.
+
+Windows (PowerShell Admin):
+```PowerShell
+winget install ffmpeg
+```
+
+macOS (Homebrew):
+```Bash
+brew install ffmpeg
+```
+
+Note: After installation, restart your terminal or IDE (e.g., VS Code) to apply the changes to your System PATH.
+
+### 4. Configure Environment:
 Create a config.py file in the root directory of the script and populate it with your specific paths and API keys:
 
 ```Python
@@ -63,6 +78,10 @@ GEMINI_API_KEY = "your_gemini_api_key_here"
 # --- Email Alerts (Optional) ---
 MAIL = "your_email@gmail.com"
 MAIL_PSWD = "your_app_password_here"
+
+# --- Quality and Resolution ---
+RESOLUTION = True
+QUALITY = True
 ```
 
 ## 💻 Usage
