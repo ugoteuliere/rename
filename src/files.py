@@ -257,7 +257,7 @@ def get_file_quality_resolution(file_path):
         720:  "480p"
     }
 
-    # scan data recovered by ffprobe
+    # scan data from ffprobe
     streams = metadata.get('streams', [])
     for stream in streams:
         width = stream.get('width')
@@ -273,9 +273,10 @@ def get_file_quality_resolution(file_path):
     tags = fmt.get('tags', {})
     for key, value in tags.items():
         technical_blob += f" {value} "
+    
     scan_string = technical_blob.replace('_', ' ').replace('.', ' ')
 
-    # detect resolution
+    # resolution
     final_res = None
     for pattern in RESOLUTION_PATTERNS:
         match = re.search(pattern, scan_string, flags=re.IGNORECASE)
@@ -283,13 +284,20 @@ def get_file_quality_resolution(file_path):
             final_res = match.group(0).strip()
             break
 
-    # detect quality
+    # quality
     final_qual = None
     for pattern in QUALITY_PATTERNS:
         match = re.search(pattern, scan_string, flags=re.IGNORECASE)
         if match:
             final_qual = match.group(0).strip()
             break
+
+    # fallback : bitrate
+    if final_qual is None:
+        raw_bitrate = fmt.get('bit_rate')
+        if raw_bitrate:
+            mbps = round(int(raw_bitrate) / 1000000)
+            final_qual = f"{mbps}Mbps"
 
     return final_res, final_qual
 

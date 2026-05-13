@@ -134,7 +134,23 @@ def parse_resolution_quality(resolution_ptn, quality_ptn, resolution_clean, qual
         if final_quality is None and qual_file and str(qual_file).strip():
             final_quality = qual_file
 
-    return final_resolution, final_quality
+    return translate_resolution_to_name(final_resolution), final_quality
+
+def translate_resolution_to_name(resolution_str):
+    if not resolution_str:
+        return None
+
+    mapping = {
+        "2160p": "4K",
+        "1440p": "2K",
+        "1080p": "FullHD",
+        "720p": "HD",
+        "480p": "SD",
+        "576p": "SD"
+    }
+
+    clean_res = str(resolution_str).strip().lower()
+    return mapping.get(clean_res, resolution_str)
 
 def format_season_and_episode(season, episode):
     try:

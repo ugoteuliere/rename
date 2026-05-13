@@ -91,33 +91,18 @@ TLDS = [
 ]
 
 RESOLUTION_PATTERNS = [
-    # Standard formats (1080p, 720p, 480p, 2160p, etc.)
-    r'\b\d{3,4}p\b', 
-    r'\b\d{3,4}i\b',
     # Ultra High Def & 4K/8K
     r'\b[48]k\b',
     r'\buhd\b',
     r'\bultra.?hd\b',
-    # Specific mobile/compressed resolutions
-    r'\bmhd\b',
-    r'\bmicrohd\b',
-    r'\bqhd\b',
+    # Standard formats (1080p, 720p, 480p, 2160p, etc.)
+    r'\b\d{3,4}p\b', 
+    r'\b\d{3,4}i\b',
     # Generic
     r'\bhd\b',
     r'\bsd\b'
 ]
 
 QUALITY_PATTERNS = [
-    # Physical Media & Remux
-    r'\bbluray\b', r'\bblu-ray\b', r'\bremux\b', r'\bbdrip\b', r'\bbrrip\b',
-    # Web Sources
-    r'\bweb-?dl\b', r'\bweb-?rip\b', r'\bweb\b', r'\bamazon\b', r'\bamzn\b', r'\bnf\b', r'\bnetflix\b',
-    # TV Sources
-    r'\bhdtv\b', r'\bpdtv\b', r'\btvrip\b', r'\bhdrip\b', r'\bsatrip\b', r'\bdsvb\b',
-    # DVD & Older
-    r'\bdvdrip\b', r'\bdvdr\b', r'\bdvd\b', r'\bvhsrip\b',
-    # Low Quality / Pre-release
-    r'\bcam\b', r'\bts\b', r'\btelesync\b', r'\btcs\b', r'\bscr\b', r'\bscreener\b', r'\bdvdscr\b', r'\bhc\b',
-    # Encodings/Special
-    r'\bhdlight\b', r'\b4klight\b', r'\b4kl\b', r'\bimax\b', r'\bqtz\b'
+    r'\bbluray\b', r'\bblu-ray\b', r'\bremux\b'
 ]
