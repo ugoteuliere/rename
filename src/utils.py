@@ -14,7 +14,7 @@ NOT_SORTED_MEDIA_FILES_FOLDER = getattr(config, 'NOT_SORTED_MEDIA_FILES_FOLDER',
 RESOLUTION = getattr(config, 'RESOLUTION', False)
 QUALITY = getattr(config, 'QUALITY', False)
 
-DATA_FILE = Path("../data/data.py")
+DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "data.py"
 
 def verify_folders():
     required_folders = [MOVIES_FOLDER, TV_SHOWS_FOLDER, NOT_SORTED_MEDIA_FILES_FOLDER]

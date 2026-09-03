@@ -3,12 +3,12 @@ TAGS = [
     r'480p', r'720p', r'1080p', r'1080i', r'2160p', r'4k', r'8k', r'uhd',
     
     # === SOURCES (D'où vient la vidéo) ===
-    r'bluray', r'bdrip', r'brrip', r'dvdrip', r'webrip', r'web\-dl', r'webdl', r'web', 
+    r'bluray', r'blu\-ray', r'bdrip', r'brrip', r'dvdrip', r'webrip', r'web\-dl', r'webdl', r'web', 
     r'hdrip', r'hdtv', r'pdtv', r'tvrip', r'cam', r'ts', r'telesync', r'remux', 
     
     # === CODECS VIDÉO & QUALITÉ ===
     r'x264', r'h264', r'avc', r'x265', r'h265', r'H\.265', r'hevc', r'av1', r'xvid', r'divx',
-    r'10bit', r'12bit', r'sdr', r'hdr', r'hdr10', r'hdr10\+', r'dolby', r'vision', r'dv',
+    r'10bit', r'12bit', r'sdr', r'hdr', r'hdr10', r'hdr10\+', r'hdr10p', r'dolby', r'vision', r'dv',
     r'hdlight', r'4klight', r'4kl', r'mhd', r'microhd', r'qtz', r'imax',
     
     # === AUDIO ===
@@ -25,7 +25,7 @@ TAGS = [
     r'repack', r'proper', r'limited', r'special', r'edition', r'uncut',
 
     # === Autres ===
-    r'lihdl', r'fw', r'final', r'group', r'rls', r'dl', r'ddp5\.1', r'ddp51', r'team', r'ddp5', r'frg', r'grp', r'amzn', r'nf', r'DDLBase', r'EPSiLON', r'FraMeSToR', r'HYBRID', r'BYNDR', r'PmP', r'MMCK', r'(?:saison|season|s)[.\s-]*(\d+)', r'(?:episode|ep|e)[.\s-]*(\d+)'
+    r'lihdl', r'fw', r'final', r'group', r'rls', r'dl', r'ddp5\.1', r'ddp51', r'team', r'ddp5', r'frg', r'grp', r'amzn', r'nf', r'DDLBase', r'EPSiLON', r'FraMeSToR', r'HYBRID', r'BYNDR', r'PmP', r'MMCK', r'artelabo', r'(?:saison|season|s)[.\s-]*(\d+)', r'(?:episode|ep|e)[.\s-]*(\d+)'
 ]
 
 TLDS = [

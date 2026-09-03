@@ -7,7 +7,6 @@ import os
 import subprocess
 import json
 from src import ui, utils
-from pymediainfo import MediaInfo
 from data.data import QUALITY_PATTERNS, RESOLUTION_PATTERNS
 
 import config
@@ -173,7 +172,8 @@ def sort_media_files(clean_data_table):
             else:
                 season_folder = "Unknown" 
 
-            tv_show_name = re.sub(r'S\d+E\d+', '', str(movie['Corrected']), flags=re.IGNORECASE).strip()
+            tv_show_name = re.sub(r'\s*(?:-\s*)?S\d+E\d+.*$', '', str(movie['Corrected']), flags=re.IGNORECASE).strip()
+            tv_show_name = re.sub(r'\s*\[.*?\]', '', tv_show_name).strip()
 
             folder_path = Path(TV_SHOWS_FOLDER) / tv_show_name / season_folder
             folder_path.mkdir(parents=True, exist_ok=True)

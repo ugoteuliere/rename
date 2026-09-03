@@ -21,7 +21,8 @@ def api_call(name, year, language, media_type):
     # build url
     url = f"https://api.themoviedb.org/3/search/{media_type}?query={encoded_query}&language={language}"
     if year:
-        url += f"&year={year}"
+        year_param = "year" if media_type == "movie" else "first_air_date_year"
+        url += f"&{year_param}={year}"
         
     headers = {
         "accept": "application/json",
@@ -42,9 +43,10 @@ def api_call(name, year, language, media_type):
             best_match = results[0]
             if media_type == "movie" :
                 tmdb_title = best_match.get('title', 'unknown')
+                release_date = best_match.get('release_date', '')
             elif media_type == "tv" : 
                 tmdb_title = best_match.get('name', 'unknown')
-            release_date = best_match.get('release_date', 'unknown')
+                release_date = best_match.get('first_air_date', '')
             tmdb_year = release_date[:4] if release_date else 'unknown'
             original_language = best_match.get('original_language', 'unknown')
             

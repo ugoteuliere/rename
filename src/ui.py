@@ -115,10 +115,10 @@ def parse_arguments():
 
 def print_log(message):
     if LOG_ENABLED:
-        log_dir = "log"
+        log_dir = Path(__file__).resolve().parent.parent / "log"
         os.makedirs(log_dir, exist_ok=True) 
         today = datetime.now().strftime("%Y-%m-%d")
-        path = os.path.join(log_dir, f"{today}.txt")
+        path = log_dir / f"{today}.txt"
 
         hour = datetime.now().strftime("%H:%M:%S")
         with open(path, "a", encoding="utf-8") as f:
@@ -146,7 +146,10 @@ def rich_print_log(*args, **kwargs):
         console.print(*args, **kwargs)
 
 def display_corrected_filenames(clean_data_table):
-    
+    if clean_data_table.empty or 'Media' not in clean_data_table:
+        rich_print_log("[yellow]No media files detected.[/yellow]")
+        return
+
     movies_df = clean_data_table[clean_data_table['Media'] == 'movie']
     tv_shows_df = clean_data_table[clean_data_table['Media'] == 'tv']
 

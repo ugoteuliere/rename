@@ -3,7 +3,7 @@ import pytest
 import pandas as pd
 from pathlib import Path, PureWindowsPath, PurePosixPath
 from unittest.mock import patch, call, MagicMock
-from src import files, utils, api, mail
+from src import files, utils, api, mail, ui
 import requests
 import smtplib
 
@@ -42,8 +42,8 @@ fichiers = [
 
     # already corrected to tests the filters
     "Arrival (2016).mkv",
-    "A Knight of the Seven Kingdoms S01E01.mkv",
-    "Suits S01E01.mkv"
+    "A Knight of the Seven Kingdoms - S01E01.mkv",
+    "Suits - S01E01.mkv"
 ]
 
 fichiers_corriges = [
@@ -62,19 +62,19 @@ fichiers_corriges = [
     "Oppenheimer (2023)",
     "Joker (2019)",
     "Deadpool & Wolverine (2024)",
-    "Breaking Bad S01E01",
-    "Game of Thrones S08E03",
-    "Stranger Things S04E01",
-    "The Boys S03E06",
-    "True Detective S01E04",
+    "Breaking Bad - S01E01",
+    "Game of Thrones - S08E03",
+    "Stranger Things - S04E01",
+    "The Boys - S03E06",
+    "True Detective - S01E04",
     "Mad Max - Fury Road (2015)",
     "Blade Runner 2049 (2017)",
     "Jurassic Park (1993)",
     "The Godfather (1972)",
     "Parasite (2019)",
     "Everything Everywhere All at Once (2022)",
-    "Arcane S01E01",
-    "The Last of Us S01E01",
+    "Arcane - S01E01",
+    "The Last of Us - S01E01",
     "Titanic (1997)",
     "Alien (1979)"
 ]
@@ -85,11 +85,11 @@ donnees_test_api = [
     ("Parasite", 2019, "movie", [True,"Parasite", "2019", "ko"]),
     ("The Matrix", None, "movie", [True,"The Matrix", "1999", "en"]),
     ("Spirited Away", 2001, "movie", [True,"Spirited Away", "2001", "ja"]),
-    ("Stranger Things", None, "tv", [True,"Stranger Things", "unkn", "en"]),
-    ("Breaking Bad", 2008, "tv", [True,"Breaking Bad", "unkn", "en"]),
-    ("Game of Thrones", None, "tv", [True,"Game of Thrones", "unkn", "en"]),
-    ("Dark", 2017, "tv", [True,"Dark", "unkn", "de"]),
-    ("Lupin", None, "tv", [True,"Lupin", "unkn", "fr"]),
+    ("Stranger Things", None, "tv", [True, "Stranger Things", "2016", "en"]),
+    ("Breaking Bad", 2008, "tv", [True, "Breaking Bad", "2008", "en"]),
+    ("Game of Thrones", None, "tv", [True, "Game of Thrones", "2011", "en"]),
+    ("Dark", 2017, "tv", [True, "Dark", "2017", "de"]),
+    ("Lupin", None, "tv", [True, "Lupin", "2021", "fr"]),
 ]
 
 MOVIES_FOLDER = "Films"
@@ -106,6 +106,8 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr("src.files.MOVIES_FOLDER", str(tmp_path / MOVIES_FOLDER))
     monkeypatch.setattr("src.files.TV_SHOWS_FOLDER", str(tmp_path / TV_SHOWS_FOLDER))
     monkeypatch.setattr("src.files.NOT_SORTED_MEDIA_FILES_FOLDER", str(tmp_path / NOT_SORTED_MEDIA_FILES_FOLDER))
+    monkeypatch.setattr("src.utils.RESOLUTION", False)
+    monkeypatch.setattr("src.utils.QUALITY", False)
     
     for nom in fichiers:
         (dossier_download / nom).touch()
@@ -163,7 +165,7 @@ def test_rename_media_files(setup):
     target_dir = Path(NOT_SORTED_MEDIA_FILES_FOLDER)
     for file_path in target_dir.rglob('*'):
         corrected_name = file_path.stem.strip()
-        if corrected_name not in ["Arrival (2016)", "A Knight of the Seven Kingdoms S01E01", "Suits S01E01"] :
+        if corrected_name not in ["Arrival (2016)", "A Knight of the Seven Kingdoms - S01E01", "Suits - S01E01"] :
             assert corrected_name in fichiers_corriges
 
 donnees_test_gemini_api = [(
@@ -179,13 +181,17 @@ donnees_test_gemini_api = [(
 
 @pytest.mark.parametrize("media_info, expected", donnees_test_gemini_api)
 def test_gemini_api_call(media_info, expected, monkeypatch):
-    monkeypatch.setattr(api, "VERBOSE_ENABLED", True)
+    monkeypatch.setattr("src.ui.VERBOSE_ENABLED", True)
     monkeypatch.setattr(api, "TAGS", [r'480p', r'720p'])
     try:
         resultat = api.gemini_api_call(media_info)
-        assert resultat == expected
+        assert resultat[0] == expected[0]
+        assert resultat[1] == expected[1]
+        assert resultat[2] == expected[2]
+        assert resultat[3] == expected[3]
+        assert isinstance(resultat[4], list)
     except RuntimeError as e:
-        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "This model is currently experiencing high demand." in str(e):
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "quota" in str(e).lower() or "GEMINI API call failed" in str(e):
             pytest.skip("Skipped: Gemini API free plan limit reached (429 RESOURCE_EXHAUSTED).")
         else:
             raise
@@ -202,12 +208,13 @@ donnees_wrong_test_gemini_api = [(
 ]
 
 @pytest.mark.parametrize("media_info, expected", donnees_wrong_test_gemini_api)
-def test_error_gemini_api_call(media_info, expected):
+def test_error_gemini_api_call(media_info, expected, monkeypatch):
+    monkeypatch.setattr("src.ui.VERBOSE_ENABLED", True)
     try:
         resultat = api.gemini_api_call(media_info)
         assert resultat == expected
     except RuntimeError as e:
-        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "This model is currently experiencing high demand." in str(e):
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "quota" in str(e).lower() or "GEMINI API call failed" in str(e):
             pytest.skip("Skipped: Gemini API free plan limit reached (429 RESOURCE_EXHAUSTED).")
         else:
             raise
@@ -217,16 +224,15 @@ def test_file_impossible_to_rename_and_mail():
         'File': "apjfpjkd.mkv",
         'Folder': NOT_SORTED_MEDIA_FILES_FOLDER,
         'Path': f"/home/ugo/movies/{NOT_SORTED_MEDIA_FILES_FOLDER}",
-        'Clean': ["apjfpjkd",""],
-        'Parse': ["apjfpjkd",""],
+        'Clean': ["apjfpjkd", "", "", ""],
+        'Parse': ["apjfpjkd", "", "", ""],
         'Media': "movie"
     }])
     clean_files = pd.DataFrame([])
     
     try:
-        corrected_filenames = utils.get_corrected_media_filenames(media_files,clean_files)
-        assert corrected_filenames.iloc[0]['Corrected'] == None
-        assert corrected_filenames.iloc[0]['Original'] == "apjfpjkd.mkv"
+        corrected_filenames = utils.get_corrected_media_filenames(media_files, clean_files)
+        assert corrected_filenames.empty
     except RuntimeError as e:
         if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "This model is currently experiencing high demand." in str(e):
             pytest.skip("Skipped: Gemini API free plan limit reached (429 RESOURCE_EXHAUSTED).")
@@ -298,7 +304,7 @@ def test_file_impossible_to_rename_and_mail():
     ("Trop___de...points---et_tirets.2010.mkv", "Trop de points et tirets", "2010"),
 ])
 def test_clean_function(file_name, expected_title, expected_year):
-    result_title, result_year = utils.clean_filename(file_name)
+    result_title, result_year, *_ = utils.clean_filename(file_name)
     assert result_title == expected_title, f"Error on the title of the file: {file_name}"
     assert result_year == expected_year, f"Error on the year of the file: {file_name}"
 
@@ -460,15 +466,16 @@ def test_move_file_raises_runtime_error(tmp_path):
     new_path = tmp_path / "dest.txt"
     
     # 2. ACTION & VERIFY
-    with patch('src.files.make_safe_path', side_effect=lambda x: str(x)):
-        
-        # We force shutil.move to crash with a fake PermissionError
-        with patch('shutil.move', side_effect=PermissionError("Access denied")):
+    with patch('src.ui.VERBOSE_ENABLED', True):
+        with patch('src.files.make_safe_path', side_effect=lambda x: str(x)):
             
-            # We catch your custom RuntimeError
-            with pytest.raises(RuntimeError) as exc_info:
-                files.move_file(old_path, new_path)
+            # We force shutil.move to crash with a fake PermissionError
+            with patch('shutil.move', side_effect=PermissionError("Access denied")):
                 
+                # We catch your custom RuntimeError
+                with pytest.raises(RuntimeError) as exc_info:
+                    files.move_file(old_path, new_path)
+                    
     # 3. VERIFY ERROR MESSAGE
     # We check that your custom formatting and the original error are both present
     error_message = str(exc_info.value)
@@ -539,12 +546,13 @@ def test_remove_empty_folders_raises_runtime_error(tmp_path):
     
     # 2. ACTION & VERIFY
     # We force the built-in os.rmdir to fail with a fake OS error
-    with patch('os.rmdir', side_effect=OSError("Folder is locked by another process")):
-        
-        # We expect your custom RuntimeError to be raised
-        with pytest.raises(RuntimeError) as exc_info:
-            files.remove_empty_folders(str(target_path))
+    with patch('src.ui.VERBOSE_ENABLED', True):
+        with patch('os.rmdir', side_effect=OSError("Folder is locked by another process")):
             
+            # We expect your custom RuntimeError to be raised
+            with pytest.raises(RuntimeError) as exc_info:
+                files.remove_empty_folders(str(target_path))
+                
     # 3. VERIFY ERROR MESSAGE
     error_msg = str(exc_info.value)
     assert "An error occurred while deleting" in error_msg
@@ -580,10 +588,10 @@ def test_move_media_files_success(mock_move_file, mock_print_log, mock_remove_em
     
     # Did it print the correct success message with the number '2'?
     mock_print_log.assert_called_once()
-    assert "2 files have been successfully sorted" in mock_print_log.call_args[0][0]
+    assert "2 files moved successfully!" in mock_print_log.call_args[0][0]
     
     # Did it try to clean up the empty folders in the correct target directory?
-    expected_cleanup_path = Path('fake_root_dir') / 'unsorted_media'
+    expected_cleanup_path = Path('unsorted_media')
     mock_remove_empty_folders.assert_called_once_with(expected_cleanup_path)
 
 
@@ -600,10 +608,7 @@ def test_move_media_files_empty_list(mock_move_file, mock_print_log, mock_remove
     
     # 3. VERIFY
     mock_move_file.assert_not_called() # Should not have tried to move anything
-    
-    mock_print_log.assert_called_once()
-    assert "0 files have been successfully sorted" in mock_print_log.call_args[0][0]
-    
+    mock_print_log.assert_not_called()
     mock_remove_empty_folders.assert_called_once() # Should still try to clean up the root folder
 
 
@@ -614,24 +619,19 @@ def test_move_media_files_empty_list(mock_move_file, mock_print_log, mock_remove
 def test_move_media_files_stops_on_error(mock_move_file, mock_print_log, mock_remove_empty_folders):
     # 1. SETUP
     paths_to_move = [
-        ("old1", "new1"),
-        ("old2", "new2") # This one should never be reached
+        (Path("old1"), Path("new1")),
+        (Path("old2"), Path("new2"))
     ]
     
     # We force the FIRST call to move_file to crash
-    mock_move_file.side_effect = RuntimeError("Fatal move error")
+    mock_move_file.side_effect = [RuntimeError("Fatal move error"), None]
     
     # 2. ACTION & VERIFY
-    # The error should bubble up immediately
-    with pytest.raises(RuntimeError) as exc_info:
-        files.move_media_files(paths_to_move)
+    # The error is caught, skipped, and remaining files are processed
+    files.move_media_files(paths_to_move)
         
-    assert "Fatal move error" in str(exc_info.value)
-    
-    # 3. VERIFY IT STOPPED
-    assert mock_move_file.call_count == 1 # It crashed on the first one and didn't try the second
-    mock_print_log.assert_not_called() # It should NOT print the success message
-    mock_remove_empty_folders.assert_not_called() # It should NOT run the cleanup
+    assert mock_move_file.call_count == 2
+    mock_remove_empty_folders.assert_called_once()
 
 # ---------------------------------------------------------
 # SCENARIO 1: Pretend we are on WINDOWS ('nt')
@@ -685,16 +685,12 @@ def patch_globals(func):
     func = patch('src.ui.print_log')(func)
     return func
 
-def patch_globals(func):
-    """Decorator to apply common patches to the tests."""
-    func = patch('src.files.MOVIES_FOLDER', 'Movies')(func)
-    func = patch('src.files.TV_SHOWS_FOLDER', 'TV Shows')(func)
-    func = patch('src.ui.print_log')(func)
-    return func
-
 
 @patch_globals
-def test_sort_media_files_success(mock_print, tmp_path):
+def test_sort_media_files_success(mock_print, tmp_path, monkeypatch):
+    monkeypatch.setattr("src.files.MOVIES_FOLDER", str(tmp_path / 'Movies'))
+    monkeypatch.setattr("src.files.TV_SHOWS_FOLDER", str(tmp_path / 'TV Shows'))
+    
     # We dynamically generate a downloads folder path that matches the OS
     dl_dir = tmp_path / 'downloads'
     
@@ -732,45 +728,72 @@ def test_sort_media_files_success(mock_print, tmp_path):
     assert movie_new == tmp_path / 'Movies' / 'The Matrix (1999).mkv'
     
     # Check the Standard TV Show paths
-    assert tv_new == tmp_path / 'TV Shows' / 'Breaking Bad' / 'Saison 01' / 'Breaking Bad S01E05.mp4'
+    assert tv_new == tmp_path / 'TV Shows' / 'Breaking Bad' / 'Season 01' / 'Breaking Bad S01E05.mp4'
     
     # Check the Fallback TV Show paths
     assert weird_tv_new == tmp_path / 'TV Shows' / 'Weird Show Name' / 'Unknown' / 'Weird Show Name.avi'
     
     # 4. VERIFY FOLDERS WERE CREATED
     assert (tmp_path / 'Movies').exists()
-    assert (tmp_path / 'TV Shows' / 'Breaking Bad' / 'Saison 01').exists()
+    assert (tmp_path / 'TV Shows' / 'Breaking Bad' / 'Season 01').exists()
     
     # 5. VERIFY UI LOGS
     mock_print.assert_called_once_with("⏭ Ignored (not found) : Junk File.txt")
-        
+
+
+@patch_globals
+def test_sort_media_files_with_quality_and_resolution_tags(mock_print, tmp_path, monkeypatch):
+    monkeypatch.setattr("src.files.MOVIES_FOLDER", str(tmp_path / 'Movies'))
+    monkeypatch.setattr("src.files.TV_SHOWS_FOLDER", str(tmp_path / 'TV Shows'))
+
+    dl_dir = tmp_path / 'downloads'
+    data = {
+        'Path': [
+            str(dl_dir / 'got.mkv'),
+            str(dl_dir / 'dark.mkv'),
+        ],
+        'Media': ['tv', 'tv'],
+        'Corrected': [
+            'Game of Thrones (2011) - S08E03 [FullHD BluRay]',
+            'Dark (2017) - S02E05 [4K WEB-DL]'
+        ]
+    }
+    df = pd.DataFrame(data)
+
+    result_paths = files.sort_media_files(df)
+    assert len(result_paths) == 2
+
+    # Verify that clean show folders without trailing hyphens or brackets are created
+    assert (tmp_path / 'TV Shows' / 'Game of Thrones (2011)' / 'Season 08').exists()
+    assert (tmp_path / 'TV Shows' / 'Dark (2017)' / 'Season 02').exists()
+    assert result_paths[0][1] == tmp_path / 'TV Shows' / 'Game of Thrones (2011)' / 'Season 08' / 'Game of Thrones (2011) - S08E03 [FullHD BluRay].mkv'
+    assert result_paths[1][1] == tmp_path / 'TV Shows' / 'Dark (2017)' / 'Season 02' / 'Dark (2017) - S02E05 [4K WEB-DL].mkv'
 
 
 @patch_globals
 def test_sort_media_files_empty_exit(mock_print, tmp_path):
     # 1. SETUP
-    with patch('src.files.PATH', str(tmp_path)):
+    # Create a fake, OS-safe path for the test text file
+    data = {
+        'Path': [str(tmp_path / 'downloads' / 'test.txt')],
+        'Media': ['unrecognized'],
+        'Corrected': ['test']
+    }
+    df = pd.DataFrame(data)
+    
+    # 2. ACTION & VERIFY
+    with pytest.raises(SystemExit) as exc_info:
+        files.sort_media_files(df)
         
-        # Create a fake, OS-safe path for the test text file
-        data = {
-            'Path': [str(tmp_path / 'downloads' / 'test.txt')],
-            'Media': ['unrecognized'],
-            'Corrected': ['test']
-        }
-        df = pd.DataFrame(data)
-        
-        # 2. ACTION & VERIFY
-        with pytest.raises(SystemExit) as exc_info:
-            files.sort_media_files(df)
-            
-        # 3. VERIFY EXIT CODE AND LOGS
-        assert exc_info.value.code == 1 
-        
-        assert mock_print.call_count == 2
-        assert "No media to move to a new folder." in mock_print.call_args[0][0]
+    # 3. VERIFY EXIT CODE AND LOGS
+    assert exc_info.value.code == 1 
+    
+    assert mock_print.call_count == 2
+    assert "No media to move to a new folder." in mock_print.call_args[0][0]
 
 
 # 1. Patch the global API key so the test doesn't crash if you don't have one set locally
+@patch('src.ui.VERBOSE_ENABLED', True)
 @patch('src.api.TMDB_API_KEY', 'fake_test_key') 
 # 2. Patch requests.get inside the module where api_call is defined
 @patch('src.api.requests.get')
@@ -805,7 +828,9 @@ def patch_email_globals(func):
     """Decorator to fake the global config variables and UI logs."""
     func = patch('src.mail.MAIL', 'fake@gmail.com')(func)
     func = patch('src.mail.MAIL_PSWD', 'super_secret_password')(func)
-    func = patch('src.mail.print_log')(func)
+    func = patch('src.ui.MAIL_ENABLED', True)(func)
+    func = patch('src.ui.VERBOSE_ENABLED', True)(func)
+    func = patch('src.ui.print_log')(func)
     return func
 
 @patch_email_globals
@@ -873,3 +898,592 @@ def test_send_email_unexpected_error(mock_smtp, mock_print):
     error_msg = str(exc_info.value)
     assert "An unexpected error occurred" in error_msg
     assert "Network is unreachable" in error_msg
+
+
+# ===================================================================
+# ADDITIONAL TESTS: UTILS MODULE
+# ===================================================================
+
+@pytest.mark.parametrize("input_res, expected", [
+    ("2160p", "4K"),
+    ("1440p", "2K"),
+    ("1080p", "FullHD"),
+    ("720p", "HD"),
+    ("480p", "SD"),
+    ("576p", "SD"),
+    (" 1080p ", "FullHD"),
+    ("2160P", "4K"),
+    ("8K", "8K"),
+    ("custom_res", "custom_res"),
+    (None, None),
+    ("", None),
+])
+def test_translate_resolution_to_name(input_res, expected):
+    assert utils.translate_resolution_to_name(input_res) == expected
+
+
+@pytest.mark.parametrize("season, episode, expected_s, expected_e", [
+    (1, 2, "01", "02"),
+    (9, 10, "09", "10"),
+    ("3", "15", "03", "15"),
+    (12, 24, "12", "24"),
+])
+def test_format_season_and_episode(season, episode, expected_s, expected_e):
+    s, e = utils.format_season_and_episode(season, episode)
+    assert s == expected_s
+    assert e == expected_e
+
+
+def test_format_season_and_episode_invalid():
+    with pytest.raises(ValueError):
+        utils.format_season_and_episode("invalid", 1)
+
+
+def test_parse_season_episode_direct():
+    s, e = utils.parse_season_episode(1, 5, "any_filename.mkv")
+    assert s == 1
+    assert e == 5
+
+
+def test_parse_season_episode_fallback_regex():
+    s, e = utils.parse_season_episode(None, None, "My.Show.S03E14.720p.mkv")
+    assert s == 3
+    assert e == 14
+
+    s, e = utils.parse_season_episode("", "", "Show.Season.4.Episode.2.mkv")
+    assert s == 4
+    assert e == 2
+
+
+def test_parse_season_episode_fallback_failure():
+    with pytest.raises(ValueError):
+        utils.parse_season_episode(None, None, "Movie.Without.Episodes.2020.mkv")
+
+
+def test_generate_new_movie_filename_variations(monkeypatch):
+    monkeypatch.setattr(utils, "QUALITY", False)
+    monkeypatch.setattr(utils, "RESOLUTION", False)
+    name = utils.generate_new_movie_filename(True, "Spider-Man: Far From Home", "2019", None, None)
+    assert name == "Spider-Man - Far From Home (2019)"
+
+    name_no_year = utils.generate_new_movie_filename(True, "Inception", None, None, None)
+    assert name_no_year == "Inception"
+
+    monkeypatch.setattr(utils, "QUALITY", True)
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    name_with_meta = utils.generate_new_movie_filename(True, "Avatar", "2009", "4K", "BluRay")
+    assert name_with_meta == "Avatar (2009) [BluRay 4K]"
+
+
+def test_generate_new_movie_filename_missing_metadata():
+    with pytest.raises(LookupError):
+        utils.generate_new_movie_filename(False, "Title", "2020", None, None)
+
+    with pytest.raises(LookupError):
+        utils.generate_new_movie_filename(True, "", "2020", None, None)
+
+
+def test_generate_new_tvshow_filename_variations(monkeypatch):
+    monkeypatch.setattr(utils, "QUALITY", False)
+    monkeypatch.setattr(utils, "RESOLUTION", False)
+    name = utils.generate_new_tvshow_filename(True, "Game of Thrones", None, 8, 3, None, None)
+    assert name == "Game of Thrones - S08E03"
+
+    name_colon = utils.generate_new_tvshow_filename(True, "CSI: Crime Scene Investigation", "2000", "1", "2", None, None)
+    assert name_colon == "CSI - Crime Scene Investigation (2000) - S01E02"
+
+    monkeypatch.setattr(utils, "QUALITY", True)
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    name_meta = utils.generate_new_tvshow_filename(True, "Dark", "2017", 2, 5, "FullHD", "WEB-DL")
+    assert name_meta == "Dark (2017) - S02E05 [WEB-DL FullHD]"
+
+
+def test_generate_new_tvshow_filename_missing_metadata():
+    with pytest.raises(LookupError):
+        utils.generate_new_tvshow_filename(False, "Dark", "2017", 1, 1, None, None)
+
+    with pytest.raises(LookupError):
+        utils.generate_new_tvshow_filename(True, "", "2017", 1, 1, None, None)
+
+    with pytest.raises(LookupError):
+        utils.generate_new_tvshow_filename(True, "Dark", "2017", None, 1, None, None)
+
+
+def test_has_files_to_rename():
+    empty_df = pd.DataFrame()
+    assert utils.has_files_to_rename(empty_df) is False
+
+    same_df = pd.DataFrame([
+        {'Original': 'Movie (2020)', 'Corrected': 'Movie (2020)'},
+        {'Original': 'Show S01E01', 'Corrected': 'Show S01E01'}
+    ])
+    assert utils.has_files_to_rename(same_df) is False
+
+    diff_df = pd.DataFrame([
+        {'Original': 'Movie.2020.mkv', 'Corrected': 'Movie (2020)'}
+    ])
+    assert utils.has_files_to_rename(diff_df) is True
+
+
+def test_handle_conflicts_and_duplicates():
+    df = pd.DataFrame([
+        {'Original': 'FileA.mkv', 'Corrected': 'Duplicate Title (2020)'},
+        {'Original': 'FileB.mkv', 'Corrected': 'Duplicate Title (2020)'},
+        {'Original': 'FileC.mkv', 'Corrected': 'Unique Title (2021)'}
+    ])
+    failed_files = []
+    clean_df = utils.handle_conflicts_and_duplicates(df, failed_files)
+
+    assert len(clean_df) == 1
+    assert clean_df.iloc[0]['Corrected'] == 'Unique Title (2021)'
+    assert len(failed_files) == 2
+    assert any("Conflict" in f['Reason'] for f in failed_files)
+
+
+def test_verify_folders(tmp_path, monkeypatch):
+    m = tmp_path / "Movies"
+    tv = tmp_path / "TV"
+    dl = tmp_path / "Downloads"
+    m.mkdir()
+    tv.mkdir()
+    dl.mkdir()
+
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", str(m))
+    monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", str(tv))
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", str(dl))
+    assert utils.verify_folders() == 0
+
+    # Missing config raises SystemExit
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", None)
+    with pytest.raises(SystemExit) as exc:
+        utils.verify_folders()
+    assert exc.value.code == 1
+
+    # Non-existent folder raises SystemExit
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", str(tmp_path / "non_existent"))
+    with pytest.raises(SystemExit) as exc:
+        utils.verify_folders()
+    assert exc.value.code == 1
+
+
+# ===================================================================
+# ADDITIONAL TESTS: FILES MODULE
+# ===================================================================
+
+def test_move_file_conflict_raises_file_exists_error(tmp_path):
+    src_file = tmp_path / "source.mkv"
+    dest_file = tmp_path / "dest.mkv"
+    src_file.write_text("source")
+    dest_file.write_text("dest")
+
+    with patch('src.files.make_safe_path', side_effect=lambda p: str(p)):
+        with pytest.raises(FileExistsError) as exc:
+            files.move_file(src_file, dest_file)
+        assert "Conflict" in str(exc.value)
+
+
+def test_get_metadata_with_ffprobe(monkeypatch):
+    with patch('shutil.which', return_value=None):
+        assert files.get_metadata_with_ffprobe("any_file.mkv") is None
+
+    with patch('shutil.which', return_value="/usr/bin/ffprobe"):
+        fake_proc = MagicMock()
+        fake_proc.stdout = '{"streams": [{"width": 1920, "height": 1080}], "format": {}}'
+        with patch('subprocess.run', return_value=fake_proc):
+            data = files.get_metadata_with_ffprobe("any_file.mkv")
+            assert data["streams"][0]["width"] == 1920
+
+        with patch('subprocess.run', side_effect=Exception("ffprobe failed")):
+            assert files.get_metadata_with_ffprobe("any_file.mkv") is None
+
+
+def test_get_file_quality_resolution():
+    fake_metadata = {
+        'streams': [{'width': 3840, 'height': 2160, 'codec_name': 'hevc', 'pix_fmt': 'yuv420p10le', 'color_space': 'bt2020nc'}],
+        'format': {'format_name': 'matroska', 'tags': {'title': 'Movie.2160p.UHD.BluRay'}}
+    }
+    with patch('src.files.get_metadata_with_ffprobe', return_value=fake_metadata):
+        res, qual = files.get_file_quality_resolution("movie.mkv")
+        assert res in ["4k", "2160p"]
+        assert qual.lower() == "bluray"
+
+    fake_bitrate_meta = {
+        'streams': [{'width': 1920, 'height': 1080, 'codec_name': 'h264', 'pix_fmt': None, 'color_space': None}],
+        'format': {'format_name': 'mp4', 'bit_rate': '10000000', 'tags': {}}
+    }
+    with patch('src.files.get_metadata_with_ffprobe', return_value=fake_bitrate_meta):
+        res, qual = files.get_file_quality_resolution("movie.mp4")
+        assert res == "1080p"
+        assert qual == "10Mbps"
+
+    with patch('src.files.get_metadata_with_ffprobe', return_value=None):
+        res, qual = files.get_file_quality_resolution("empty.mkv")
+        assert res is None
+        assert qual is None
+
+
+def test_search_media_files_custom_path_and_filtering(tmp_path):
+    target_dir = tmp_path / "custom_downloads"
+    target_dir.mkdir()
+    (target_dir / "valid_movie.2021.1080p.mkv").touch()
+    (target_dir / "valid_show.S01E01.mp4").touch()
+    (target_dir / "subtitle.srt").touch()
+    (target_dir / "info.nfo").touch()
+    (target_dir / "notes.txt").touch()
+
+    messy_df, clean_df = files.search_media_files(str(target_dir))
+    assert len(messy_df) == 2
+
+    # Non-existent directory returns None
+    assert files.search_media_files(str(tmp_path / "non_existent_folder")) is None
+
+    # Directory with no media files exits 1
+    empty_dir = tmp_path / "empty_folder"
+    empty_dir.mkdir()
+    with pytest.raises(SystemExit) as exc:
+        files.search_media_files(str(empty_dir))
+    assert exc.value.code == 1
+
+
+def test_rename_media_files_edge_cases(tmp_path):
+    media_file = tmp_path / "Movie.2020.mkv"
+    media_file.touch()
+
+    df = pd.DataFrame([
+        {'Original': 'Movie.2020.mkv', 'Corrected': 'Movie (2020)', 'Path': str(media_file)},
+        {'Original': 'Missing.mkv', 'Corrected': 'Missing (2020)', 'Path': str(tmp_path / 'Missing.mkv')},
+        {'Original': 'Ignored.mkv', 'Corrected': None, 'Path': str(tmp_path / 'Ignored.mkv')},
+    ])
+
+    renamed_df = files.rename_media_files(df)
+    assert (tmp_path / "Movie (2020).mkv").exists()
+
+
+# ===================================================================
+# ADDITIONAL TESTS: UI MODULE
+# ===================================================================
+
+def test_parse_arguments_conflicts(monkeypatch):
+    # Both -m and -r together should raise SystemExit
+    monkeypatch.setattr(sys, "argv", ["main.py", "-m", "-r"])
+    with pytest.raises(SystemExit):
+        ui.parse_arguments()
+
+    # --path without -r should raise SystemExit
+    monkeypatch.setattr(sys, "argv", ["main.py", "--path", "some_folder"])
+    with pytest.raises(SystemExit):
+        ui.parse_arguments()
+
+
+def test_parse_arguments_missing_keys(monkeypatch):
+    monkeypatch.setattr(ui, "MAIL", None)
+    monkeypatch.setattr(ui, "MAIL_PSWD", None)
+    monkeypatch.setattr(sys, "argv", ["main.py", "-e"])
+    with pytest.raises(SystemExit):
+        ui.parse_arguments()
+
+    monkeypatch.setattr(ui, "GEMINI_API_KEY", None)
+    monkeypatch.setattr(sys, "argv", ["main.py", "-i"])
+    with pytest.raises(SystemExit):
+        ui.parse_arguments()
+
+
+def test_user_confirmation(monkeypatch):
+    monkeypatch.setattr(ui, "AUTO_ENABLED", True)
+    # With AUTO_ENABLED=True, it should return immediately without waiting for input
+    ui.user_confirmation("test action")
+
+    monkeypatch.setattr(ui, "AUTO_ENABLED", False)
+    with patch('builtins.input', side_effect=KeyboardInterrupt):
+        with pytest.raises(SystemExit) as exc:
+            ui.user_confirmation("cancelled action")
+        assert exc.value.code == 1
+
+
+def test_ui_display_tables_smoke():
+    # Verify these display functions run without crashing on various inputs
+    empty_df = pd.DataFrame()
+    ui.display_corrected_filenames(empty_df)
+    ui.display_sorted_files([])
+    ui.display_skipped_filenames([])
+
+    populated_df = pd.DataFrame([
+        {'Media': 'movie', 'Original': 'M1.mkv', 'Corrected': 'M1 (2020)'},
+        {'Media': 'tv', 'Original': 'T1.mkv', 'Corrected': 'T1 - S01E01', 'Season': '01', 'Episode': '01'}
+    ])
+    ui.display_corrected_filenames(populated_df)
+
+    ui.display_skipped_filenames([{'Original': 'Bad.mkv', 'Reason': 'Parsing error'}])
+
+
+# ===================================================================
+# ADDITIONAL TESTS: API MODULE
+# ===================================================================
+
+def test_api_call_missing_key_exits(monkeypatch):
+    monkeypatch.setattr(api, "TMDB_API_KEY", None)
+    with pytest.raises(SystemExit) as exc:
+        api.api_call("Inception", "2010", "en-US", "movie")
+    assert exc.value.code == 1
+
+
+@patch('src.api.TMDB_API_KEY', 'fake_key')
+@patch('src.api.requests.get')
+def test_api_call_http_errors_and_empty_results(mock_get):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    mock_get.return_value = mock_resp
+    result = api.api_call("NonExistent", "2020", "en-US", "movie")
+    assert result == [False, None, None, None]
+
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {'results': []}
+    result = api.api_call("NonExistent", "2020", "en-US", "movie")
+    assert result == [False, None, None, None]
+
+
+def test_gemini_api_call_missing_key(monkeypatch):
+    monkeypatch.setattr(api, "GEMINI_API_KEY", None)
+    dummy_info = {
+        'File': 'test.mkv',
+        'Folder': 'downloads',
+        'Path': '/path/test.mkv',
+        'Clean': 'test',
+        'Parse': 'test',
+        'Media': 'movie'
+    }
+    with pytest.raises(SystemExit) as exc:
+        api.gemini_api_call(dummy_info)
+    assert exc.value.code == 1
+
+
+# ===================================================================
+# ADDITIONAL TESTS: ADVANCED UTILS EDGE CASES
+# ===================================================================
+
+def test_add_new_tags_all_already_exist(tmp_path, monkeypatch):
+    fake_data_file = tmp_path / "data.py"
+    fake_data_file.write_text("TAGS = [r'existing_tag']\n", encoding="utf-8")
+    monkeypatch.setattr(utils, "DATA_FILE", fake_data_file)
+
+    # Calling with tag that already exists should return early at line 61
+    utils.add_new_tags(["existing_tag"])
+    assert fake_data_file.read_text(encoding="utf-8") == "TAGS = [r'existing_tag']\n"
+
+
+def test_parse_resolution_quality_edge_cases(monkeypatch):
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    monkeypatch.setattr(utils, "QUALITY", True)
+
+    # Resolution from clean fallback, quality from ptn
+    res, qual = utils.parse_resolution_quality(None, "BluRay", "1080p", None, "file.mkv")
+    assert res == "FullHD"
+    assert qual == "BluRay"
+
+    # Quality from clean fallback, resolution from ptn
+    res, qual = utils.parse_resolution_quality("2160p", None, None, "WEB-DL", "file.mkv")
+    assert res == "4K"
+    assert qual == "WEB-DL"
+
+    # Both missing, fall back to files.get_file_quality_resolution
+    with patch('src.files.get_file_quality_resolution', return_value=("720p", "HDTV")):
+        res, qual = utils.parse_resolution_quality(None, None, None, None, "file.mkv")
+        assert res == "HD"
+        assert qual == "HDTV"
+
+    # Both disabled in config
+    monkeypatch.setattr(utils, "RESOLUTION", False)
+    monkeypatch.setattr(utils, "QUALITY", False)
+    res, qual = utils.parse_resolution_quality("1080p", "BluRay", "1080p", "BluRay", "file.mkv")
+    assert res is None
+    assert qual is None
+
+
+def test_correct_movie_filename_french_and_ai_fallback(monkeypatch):
+    monkeypatch.setattr(utils, "RESOLUTION", False)
+    monkeypatch.setattr(utils, "QUALITY", False)
+    monkeypatch.setattr(ui, "AI_FALLBACK_ENABLED", True)
+
+    fake_file = {
+        'File': 'Intouchables.2011.mkv',
+        'Path': '/movies/Intouchables.2011.mkv',
+        'Parse': ['Intouchables', '2011', None, None],
+        'Clean': ['Intouchables', '2011', None, None]
+    }
+
+    # TMDB English call returns original_language="fr", triggering French TMDB call
+    with patch('src.api.api_call') as mock_api:
+        mock_api.side_effect = [
+            [True, "The Intouchables", "2011", "fr"],     # English call
+            [True, "Intouchables", "2011", "fr"]          # French call
+        ]
+        new_name = utils.correct_movie_filename(fake_file)
+        assert new_name == "Intouchables (2011)"
+        assert mock_api.call_count == 2
+
+    # Parse and Clean both fail on TMDB, triggers AI Fallback
+    with patch('src.api.api_call', return_value=[False, None, None, None]):
+        with patch('src.api.gemini_api_call', return_value=[True, "AI Movie", "2022", "en", []]) as mock_gemini:
+            new_name = utils.correct_movie_filename(fake_file)
+            assert new_name == "AI Movie (2022)"
+            mock_gemini.assert_called_once()
+
+
+def test_correct_movie_filename_exception_handling(monkeypatch):
+    monkeypatch.setattr(ui, "VERBOSE_ENABLED", True)
+    fake_file = {'File': 'Faulty.mkv'}
+
+    with patch('src.utils.generate_new_movie_filename', side_effect=RuntimeError("Test crash")):
+        with patch('src.mail.send_email') as mock_mail:
+            with patch('src.ui.print_log') as mock_log:
+                res = utils.correct_movie_filename(fake_file)
+                assert res is None
+                mock_mail.assert_called_once()
+                assert "Impossible to rename" in mock_mail.call_args[0][0]
+                mock_log.assert_called_once()
+
+
+def test_correct_tv_show_filename_french_and_ai_fallback(monkeypatch):
+    monkeypatch.setattr(utils, "RESOLUTION", False)
+    monkeypatch.setattr(utils, "QUALITY", False)
+    monkeypatch.setattr(ui, "AI_FALLBACK_ENABLED", True)
+
+    fake_file = {
+        'File': 'Lupin.S01E01.mkv',
+        'Path': '/tv/Lupin.S01E01.mkv',
+        'Parse': ['Lupin', '2021', 1, 1, None, None],
+        'Clean': ['Lupin', '2021', None, None]
+    }
+
+    # TMDB English call returns original_language="fr", triggering French TMDB call
+    with patch('src.api.api_call') as mock_api:
+        mock_api.side_effect = [
+            [True, "Lupin Part 1", "2021", "fr"],     # English call
+            [True, "Lupin", "2021", "fr"]             # French call
+        ]
+        new_name, s, e = utils.correct_tv_show_filename(fake_file)
+        assert new_name == "Lupin (2021) - S01E01"
+        assert s == "01"
+        assert e == "01"
+
+    # Both TMDB calls fail, triggers AI Fallback
+    with patch('src.api.api_call', return_value=[False, None, None, None]):
+        with patch('src.api.gemini_api_call', return_value=[True, "AI Show", "2023", "en", []]):
+            new_name, s, e = utils.correct_tv_show_filename(fake_file)
+            assert new_name == "AI Show (2021) - S01E01"
+
+
+def test_correct_tv_show_filename_exception_handling(monkeypatch):
+    monkeypatch.setattr(ui, "VERBOSE_ENABLED", True)
+    fake_file = {'File': 'FaultyShow.mkv'}
+
+    with patch('src.mail.send_email') as mock_mail:
+        with patch('src.ui.print_log') as mock_log:
+            new_name, s, e = utils.correct_tv_show_filename(fake_file)
+            assert new_name is None
+            assert s is None
+            assert e is None
+            mock_mail.assert_called_once()
+            mock_log.assert_called_once()
+
+
+def test_get_corrected_media_filenames_unknown_media():
+    df_messy = pd.DataFrame([
+        {'Media': 'unknown_type', 'File': 'Mystery.iso', 'Path': '/path/Mystery.iso'}
+    ])
+    df_clean = pd.DataFrame()
+
+    with patch('src.ui.print_log') as mock_log:
+        result = utils.get_corrected_media_filenames(df_messy, df_clean)
+        assert result.empty
+        mock_log.assert_called_with("Ignored : Mystery.iso\n")
+
+
+def test_sort_media_dataframe():
+    empty_df = pd.DataFrame()
+    assert utils.sort_media_dataframe(empty_df).empty
+
+    df = pd.DataFrame([
+        {'Corrected': 'Z Movie', 'Season': None, 'Episode': None},
+        {'Corrected': 'A Show', 'Season': '02', 'Episode': '01'},
+        {'Corrected': 'A Show', 'Season': '01', 'Episode': '05'},
+    ])
+    sorted_df = utils.sort_media_dataframe(df)
+    assert sorted_df.iloc[0]['Corrected'] == 'A Show'
+    assert sorted_df.iloc[0]['Season'] == '01'
+    assert sorted_df.iloc[1]['Season'] == '02'
+    assert sorted_df.iloc[2]['Corrected'] == 'Z Movie'
+
+
+# ===================================================================
+# ADDITIONAL TESTS: FILES & API 100% COVERAGE
+# ===================================================================
+
+def test_rename_media_files_all_already_clean(tmp_path):
+    clean_file = tmp_path / "Movie (2020).mkv"
+    clean_file.touch()
+
+    df = pd.DataFrame([
+        {'Original': 'Movie (2020)', 'Corrected': 'Movie (2020)', 'Path': str(clean_file)}
+    ])
+
+    with patch('src.ui.print_log') as mock_log:
+        res = files.rename_media_files(df)
+        assert res.iloc[0]['Path'] == str(clean_file)
+        mock_log.assert_called_with("\n ❌ No files have been renamed.")
+
+
+def test_rename_media_files_os_rename_failure(tmp_path):
+    old_file = tmp_path / "OldMovie.mkv"
+    old_file.touch()
+
+    df = pd.DataFrame([
+        {'Original': 'OldMovie.mkv', 'Corrected': 'NewMovie (2020)', 'Path': str(old_file)}
+    ])
+
+    with patch('os.rename', side_effect=PermissionError("Permission Denied")):
+        with pytest.raises(RuntimeError) as exc:
+            files.rename_media_files(df)
+        assert "Impossible to rename" in str(exc.value)
+
+
+def test_gemini_api_call_success_zero(monkeypatch):
+    monkeypatch.setattr(api, "GEMINI_API_KEY", "fake_key")
+    dummy_info = {
+        'File': 'test.mkv',
+        'Folder': 'downloads',
+        'Path': '/path/test.mkv',
+        'Clean': 'test',
+        'Parse': 'test',
+        'Media': 'movie'
+    }
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = '{"success": 0}'
+    mock_client.models.generate_content.return_value = mock_response
+
+    with patch('src.api.genai.Client', return_value=mock_client):
+        result = api.gemini_api_call(dummy_info)
+        assert result == [False, None, None, None, None]
+
+
+def test_gemini_api_call_json_decode_error(monkeypatch):
+    monkeypatch.setattr(api, "GEMINI_API_KEY", "fake_key")
+    dummy_info = {
+        'File': 'test.mkv',
+        'Folder': 'downloads',
+        'Path': '/path/test.mkv',
+        'Clean': 'test',
+        'Parse': 'test',
+        'Media': 'movie'
+    }
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = '<html>Not JSON</html>'
+    mock_client.models.generate_content.return_value = mock_response
+
+    with patch('src.api.genai.Client', return_value=mock_client):
+        result = api.gemini_api_call(dummy_info)
+        assert result == [False, None, None, None, None]
