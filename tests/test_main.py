@@ -335,11 +335,22 @@ def test_clean_function(file_name, expected_title, expected_year):
     # Dashes within the domain name
     ("Interstellar.2014.super-awesome-tracker.net.1080p.mkv", "Interstellar.2014.1080p.mkv"), 
     
-    # --- False Positive Protection ---
+    # --- Underscore delimiters and brackets wrapping URLs ---
+    ("DDLBase.com_Good.Time.2017.PROPER.mkv", "Good.Time.2017.PROPER.mkv"),
+    ("www.site.com_Movie.2020.mkv", "Movie.2020.mkv"),
+    ("_site.com_Movie.2020.mkv", "Movie.2020.mkv"),
+    ("[DDLBase.com] Good Time 2017.mkv", "Good Time 2017.mkv"),
+    ("(www.site.fr) Movie 2020.mkv", "Movie 2020.mkv"),
+
+    # --- False Positive Protection (Titles with numbers, brackets, etc.) ---
     # Assuming "movie", "film", and "dot" are NOT in the TLDS list, these must remain entirely intact
     ("Scary.Movie.2000.1080p.mkv", "Scary.Movie.2000.1080p.mkv"),
     ("A.Good.Film.2018.mkv", "A.Good.Film.2018.mkv"),
     ("Murder.Dot.Com.2008.mkv", "Murder.2008.mkv"), # .Com will be removed, leaving Murder.Dot.2008.mkv (if 'com' is in TLDs)
+    ("[REC].2007.1080p.mkv", "[REC].2007.1080p.mkv"),
+    ("1917.2019.1080p.mkv", "1917.2019.1080p.mkv"),
+    ("2012.2009.1080p.mkv", "2012.2009.1080p.mkv"),
+    ("300.2006.1080p.mkv", "300.2006.1080p.mkv"),
 ])
 def test_remove_url(file_name, expected_cleaned):
     """
@@ -1487,3 +1498,91 @@ def test_gemini_api_call_json_decode_error(monkeypatch):
     with patch('src.api.genai.Client', return_value=mock_client):
         result = api.gemini_api_call(dummy_info)
         assert result == [False, None, None, None, None]
+
+
+# ==============================================================================
+# Tests for Season / Episode Normalization and French Tag Parsing
+# ==============================================================================
+
+@pytest.mark.parametrize("input_name, expected_output", [
+    ("Le.Bureau.des.Legendes.Saison.01E02.1080p.mkv", "Le.Bureau.des.Legendes.S01E02.1080p.mkv"),
+    ("Le.Bureau.des.Legendes.Saison.1E2.1080p.mkv", "Le.Bureau.des.Legendes.S01E02.1080p.mkv"),
+    ("Show.Name.S01.Episode.02.1080p.mkv", "Show.Name.S01E02.1080p.mkv"),
+    ("Show.Name.S01.Ep.02.1080p.mkv", "Show.Name.S01E02.1080p.mkv"),
+    ("Show.Name.S01.Ep02.1080p.mkv", "Show.Name.S01E02.1080p.mkv"),
+    ("Show.Name.S1.Episode.2.1080p.mkv", "Show.Name.S01E02.1080p.mkv"),
+    ("Show.Name.Saison.01.Episode.02.1080p.mkv", "Show.Name.S01E02.1080p.mkv"),
+    ("Show.Name.Saison.1.Episode.2.1080p.mkv", "Show.Name.S01E02.1080p.mkv"),
+    ("Show.Name.Saison 01 Episode 02.mkv", "Show.Name.S01E02.mkv"),
+    ("Show.Name.Saison.01.Ep.02.mkv", "Show.Name.S01E02.mkv"),
+    ("Show.Name.Season.01.Episode.02.mkv", "Show.Name.S01E02.mkv"),
+    ("Show.Name.Season.1E02.mkv", "Show.Name.S01E02.mkv"),
+    ("Show.Name.S01.E02.mkv", "Show.Name.S01E02.mkv"),
+    ("Show.Name.S01-E02.mkv", "Show.Name.S01E02.mkv"),
+    ("Show.Name.S01E02.mkv", "Show.Name.S01E02.mkv"),
+    # Safe edge cases: Movies with 'Saison' or 'Episode' that should NOT be modified
+    ("Une.Saison.Blanche.et.Seche.1989.1080p.mkv", "Une.Saison.Blanche.et.Seche.1989.1080p.mkv"),
+    ("Episode.50.Movie.2020.mkv", "Episode.50.Movie.2020.mkv"),
+    ("", ""),
+    (None, None),
+])
+def test_normalize_season_episode(input_name, expected_output):
+    assert utils.normalize_season_episode(input_name) == expected_output
+
+
+def test_parse_filename_with_saison_patterns():
+    # Saison.01E02
+    parse, media = utils.parse_filename("Le.Bureau.des.Legendes.Saison.01E02.1080p.mkv")
+    assert media == "tv"
+    assert parse[0] == "Le Bureau des Legendes"
+    assert parse[2] == "1"
+    assert parse[3] == "2"
+    assert parse[4] == "1080p"
+
+    # S01.Episode.02
+    parse, media = utils.parse_filename("Stranger.Things.S01.Episode.02.720p.mkv")
+    assert media == "tv"
+    assert parse[0] == "Stranger Things"
+    assert parse[2] == "1"
+    assert parse[3] == "2"
+    assert parse[4] == "720p"
+
+    # Saison.01.Episode.02
+    parse, media = utils.parse_filename("Kaamelott.Saison.02.Episode.15.mkv")
+    assert media == "tv"
+    assert parse[0] == "Kaamelott"
+    assert parse[2] == "2"
+    assert parse[3] == "15"
+
+
+def test_clean_filename_with_saison_patterns():
+    title, year, res, qual = utils.clean_filename("Le.Bureau.des.Legendes.Saison.01E02.1080p.mkv")
+    assert title == "Le Bureau des Legendes"
+    assert res == "1080p"
+
+
+def test_parse_season_episode_fallback_with_saison_patterns():
+    s, e = utils.parse_season_episode(None, None, "Show.Saison.02E05.mkv")
+    assert s == 2 and e == 5
+
+    s, e = utils.parse_season_episode("", "", "Show.Saison.03.Episode.04.mkv")
+    assert s == 3 and e == 4
+
+    s, e = utils.parse_season_episode(None, None, "Show.S05.Episode.06.mkv")
+    assert s == 5 and e == 6
+
+
+def test_parse_filename_with_url_prefix():
+    # Test movie with underscore URL prefix (like DDLBase.com_)
+    raw = "DDLBase.com_Good.Time.2017.PROPER.BluRay.1080p.DTS-HD.MA.5.1.AVC.REMUX-FraMeSToR.mkv"
+    parse, media = utils.parse_filename(raw)
+    assert media == "movie"
+    assert parse[0] == "Good Time"
+    assert parse[1] == "2017"
+    assert parse[2] == "1080p"
+
+    # Test clean_filename on the same file
+    clean_title, clean_year, clean_res, clean_qual = utils.clean_filename(raw)
+    assert clean_title == "Good Time"
+    assert clean_year == "2017"
+

@@ -83,16 +83,40 @@ def add_new_tags(missing_tags):
     else:
         ui.print_log(f" ❌ Error : Impossible to find TAGS list {DATA_FILE.name}")
 
+SEASON_EPISODE_PATTERNS = [
+    # 1. Saison/Season XX (Episode/Ep/E) XX (ex: Saison.01E02, Saison.1E2, Season.01.Episode.02, Saison 01 Ep 02)
+    re.compile(r'\b(?:saison|season)[.\s_-]*(\d{1,2})[.\s_-]*(?:episode|ep|e)[.\s_-]*(\d{1,3})\b', re.IGNORECASE),
+    # 2. SXX (Episode/Ep) XX (ex: S01.Episode.02, S01.Ep.02, S1 Episode 2)
+    re.compile(r'\bs(\d{1,2})[.\s_-]*(?:episode|ep)[.\s_-]*(\d{1,3})\b', re.IGNORECASE),
+    # 3. SXX séparé de EXX (ex: S01.E02, S01-E02, S1.E2)
+    re.compile(r'\bs(\d{1,2})[.\s_-]+e(\d{1,3})\b', re.IGNORECASE),
+]
+
+def normalize_season_episode(filename: str) -> str:
+    if not filename:
+        return filename
+    for pattern in SEASON_EPISODE_PATTERNS:
+        def repl(match):
+            s = int(match.group(1))
+            e = int(match.group(2))
+            return f"S{s:02d}E{e:02d}"
+
+        new_filename, count = pattern.subn(repl, filename)
+        if count > 0:
+            return new_filename
+    return filename
+
 def parse_season_episode(season, episode, filename):
     try:
         s = int(season)
         e = int(episode)
     except (ValueError, TypeError):
+        norm_filename = normalize_season_episode(filename)
         season_regex = r'(?:saison|season|s)[.\s-]*(\d+)'
         episode_regex = r'(?:episode|ep|e)[.\s-]*(\d+)'
 
-        s_match = re.search(season_regex, filename, re.IGNORECASE)
-        e_match = re.search(episode_regex, filename, re.IGNORECASE)
+        s_match = re.search(season_regex, norm_filename, re.IGNORECASE)
+        e_match = re.search(episode_regex, norm_filename, re.IGNORECASE)
 
         if s_match and e_match:
             s = int(s_match.group(1))
@@ -330,23 +354,25 @@ def remove_url(filename):
     url_pattern = rf"""
         (?:
             # CASE 1: Starts with 'www.' (Safe to greedily capture multiple subdomains)
-            \bwww\.(?:[a-zA-Z0-9-]+\.)+(?:{tlds_pattern})\b
+            (?:\b|(?<=_))www\.(?:[a-zA-Z0-9-]+\.)+(?:{tlds_pattern})(?:\b|(?=_))
             
             | # OR
             
             # CASE 2: No 'www.' (Strictly ONE word before the TLD chain)
             # This captures "site.com" or "amazon.co.uk" but stops before "My.Movie."
-            \b[a-zA-Z0-9-]+\.(?:(?:{tlds_pattern})\.)*(?:{tlds_pattern})\b
+            (?:\b|(?<=_))[a-zA-Z0-9-]+\.(?:(?:{tlds_pattern})\.)*(?:{tlds_pattern})(?:\b|(?=_))
         )
     """
     # clean
     clean_filename = re.sub(url_pattern, '', filename, flags=re.IGNORECASE | re.VERBOSE)
+    clean_filename = re.sub(r'\[\s*\]|\(\s*\)', '', clean_filename)
     clean_filename = re.sub(r'\.{2,}', '.', clean_filename)
     clean_filename = clean_filename.strip('.-_ ')
 
     return clean_filename
 
 def parse_filename(filename):
+    filename = normalize_season_episode(filename)
     filename_without_url = remove_url(filename)
     filename_without_url = re.sub(r'\d{5,}', '', filename_without_url)
     filename_parsed = PTN.parse(filename_without_url)
@@ -365,6 +391,7 @@ def parse_filename(filename):
     return parse, media
 
 def clean_filename(filename):
+    filename = normalize_season_episode(filename)
     raw_name = filename.rsplit('.', 1)[0]
     raw_name = raw_name.replace('_', '.')
 
