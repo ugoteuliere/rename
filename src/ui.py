@@ -194,8 +194,12 @@ def display_corrected_filenames(clean_data_table):
         rich_print_log()
 
 def display_sorted_files(paths):
-    movie_dir = Path(MOVIES_FOLDER)
-    tv_dir = Path(TV_SHOWS_FOLDER)
+    if not paths:
+        rich_print_log("[yellow]No sorted files to display.[/yellow]")
+        return
+
+    movie_dir = Path(MOVIES_FOLDER) if MOVIES_FOLDER else None
+    tv_dir = Path(TV_SHOWS_FOLDER) if TV_SHOWS_FOLDER else None
 
     movies_data = []
     tv_shows_data = []
@@ -205,13 +209,15 @@ def display_sorted_files(paths):
         p_new = Path(chemin_nouveau)
         old_name = str(Path(chemin_ancien).name)
 
-        if p_new.is_relative_to(movie_dir):
+        if movie_dir and p_new.is_relative_to(movie_dir):
             short_path = Path(movie_dir.name) / p_new.relative_to(movie_dir)
             movies_data.append((old_name, str(short_path)))
             
-        elif p_new.is_relative_to(tv_dir):
+        elif tv_dir and p_new.is_relative_to(tv_dir):
             short_path = Path(tv_dir.name) / p_new.relative_to(tv_dir)
             tv_shows_data.append((old_name, str(short_path)))
+        else:
+            movies_data.append((old_name, str(p_new.name)))
 
     if not movies_data and not tv_shows_data:
         rich_print_log("[yellow]No sorted files to display.[/yellow]")

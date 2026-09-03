@@ -1211,12 +1211,18 @@ def test_user_confirmation(monkeypatch):
         assert exc.value.code == 1
 
 
-def test_ui_display_tables_smoke():
+def test_ui_display_tables_smoke(monkeypatch):
     # Verify these display functions run without crashing on various inputs
     empty_df = pd.DataFrame()
     ui.display_corrected_filenames(empty_df)
     ui.display_sorted_files([])
     ui.display_skipped_filenames([])
+
+    # Test when MOVIES_FOLDER and TV_SHOWS_FOLDER are None (as in CI environments without config)
+    monkeypatch.setattr(ui, "MOVIES_FOLDER", None)
+    monkeypatch.setattr(ui, "TV_SHOWS_FOLDER", None)
+    ui.display_sorted_files([])
+    ui.display_sorted_files([("/downloads/test.mkv", "/sorted/test.mkv")])
 
     populated_df = pd.DataFrame([
         {'Media': 'movie', 'Original': 'M1.mkv', 'Corrected': 'M1 (2020)'},
