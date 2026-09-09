@@ -1,12 +1,21 @@
 import sys
 import os
+
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 from rich.console import Console
 from rich.table import Table
 from datetime import datetime
 from pathlib import Path
 import argparse
 
-import config
+from src.config import config
 MOVIES_FOLDER = getattr(config, 'MOVIES_FOLDER', None)
 TV_SHOWS_FOLDER = getattr(config, 'TV_SHOWS_FOLDER', None)
 GEMINI_API_KEY = getattr(config, 'GEMINI_API_KEY', None)
@@ -31,7 +40,10 @@ def parse_arguments():
         "Examples:\n"
         "  python main.py                    (Default: Renames AND moves files)\n"
         "  python main.py -r                 (Only renames the files)\n"
-        "  python main.py -m                 (Only moves cleanly named files)\n\n"
+        "  python main.py -m                 (Only moves cleanly named files)\n"
+        "  python main.py configure          (Interactive configuration wizard)\n"
+        "  python main.py config --list      (List all configured settings)\n"
+        "  python main.py config --set paths.movies_folder \"D:/Movies\"\n\n"
         "Documentation & Updates: https://github.com/ugoteuliere/rename"
     )
 
@@ -64,16 +76,33 @@ def parse_arguments():
     
     parser.add_argument("-v", "--verbose", action="store_true", 
                         help="Display error logs after the error messages.")
-    
+
+    # Subparsers for config commands
+    subparsers = parser.add_subparsers(dest="subcommand")
+
+    config_parser = subparsers.add_parser(
+        "config",
+        help="View and manage configuration settings (INI file & environment variables).",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    config_parser.add_argument("-l", "--list", action="store_true", help="List all configured settings and their sources.")
+    config_parser.add_argument("--show-secrets", action="store_true", help="Display sensitive values (API keys, passwords) without masking.")
+    config_parser.add_argument("--get", metavar="KEY", help="Get the value for a specific setting (e.g. paths.movies_folder, api.tmdb_api_key).")
+    config_parser.add_argument("--set", nargs=2, metavar=("KEY", "VALUE"), help="Set a configuration setting (e.g. paths.movies_folder 'D:/Movies').")
+    config_parser.add_argument("--unset", metavar="KEY", help="Remove a configuration setting from the INI file.")
+    config_parser.add_argument("--path", action="store_true", help="Display the path of the active configuration file.")
+
+    subparsers.add_parser("configure", help="Launch interactive configuration wizard.")
+
     args = parser.parse_args()
+
+    # If running a configuration subcommand, return immediately
+    if getattr(args, "subcommand", None) in ("config", "configure"):
+        return args
 
     # Conflict check: cannot move and rename explicitly at the same time
     if args.only_move and args.only_rename:
-        parser.error(
-            "Conflict: You cannot use '--only_move' (-m) and '--only_rename' (-r) at the same time.\n"
-            "Reason: To perform both actions sequentially (which is the standard behavior), "
-            "simply run the script without either flag (e.g., `python main.py`)."
-        )
+        parser.error("You cannot use both --only_move (-m) and --only_rename (-r) flags at the same time.")
 
     # Path check: must be used with --only_rename and must exist
     if args.path:
@@ -92,16 +121,30 @@ def parse_arguments():
     if args.mail:
         if not MAIL or not MAIL_PSWD:
             parser.error(
-                "Missing configuration: The '--mail' (-e) option requires 'MAIL' and 'MAIL_PSWD' "
-                "to be set in the config.py file."
+                "❌ Missing configuration: The '--mail' (-e) option requires both 'MAIL' and 'MAIL_PSWD' to be configured.\n\n"
+                "💡 How to fix:\n"
+                "  1. Run the configuration wizard:\n"
+                "     python main.py configure\n"
+                "  2. Or set them via CLI:\n"
+                "     python main.py config --set mail.mail \"your_email@gmail.com\"\n"
+                "     python main.py config --set mail.mail_pswd \"your_app_password\"\n"
+                "  3. Or use environment variables:\n"
+                "     export RENAME_MAIL=\"your_email@gmail.com\"\n"
+                "     export RENAME_MAIL_PSWD=\"your_app_password\""
             )
         MAIL_ENABLED = True
 
     if args.ai:
         if not GEMINI_API_KEY:
             parser.error(
-                "Missing configuration: The '--ai' (-i) option requires 'GEMINI_API_KEY' "
-                "to be set in the config.py file."
+                "❌ Missing configuration: The '--ai' (-i) option requires 'GEMINI_API_KEY' to be configured.\n\n"
+                "💡 How to fix:\n"
+                "  1. Run the configuration wizard:\n"
+                "     python main.py configure\n"
+                "  2. Or set the key via CLI:\n"
+                "     python main.py config --set api.gemini_api_key \"<your_gemini_key>\"\n"
+                "  3. Or use the environment variable:\n"
+                "     export RENAME_GEMINI_API_KEY=\"<your_gemini_key>\""
             )
         AI_FALLBACK_ENABLED = True
 
@@ -112,6 +155,78 @@ def parse_arguments():
         VERBOSE_ENABLED = True
         
     return args
+
+def handle_config_command(args):
+    from src.config import config
+    
+    if getattr(args, "subcommand", None) == "configure":
+        config.run_wizard()
+        return
+
+    if getattr(args, "path", False):
+        rich_print_log(f"\n📂 Active configuration file: [green]{config.config_path}[/green]\n")
+        return
+
+    if getattr(args, "get", None):
+        key = args.get.strip()
+        val, source = config.get_with_source(key)
+        if val is None:
+            rich_print_log(f"[yellow]'{key}' is not set.[/yellow]")
+        else:
+            rich_print_log(f"[bold green]{key}[/bold green] = {val} [cyan]({source})[/cyan]")
+        return
+
+    if getattr(args, "set", None):
+        key, val = args.set
+        try:
+            config.set(key, val)
+            rich_print_log(f"\n✅ Set [bold green]{key}[/bold green] = [yellow]{val}[/yellow] in [green]{config.config_path}[/green]\n")
+        except ValueError as e:
+            rich_print_log(f"\n❌ [bold red]Configuration error:[/bold red] {e}\n")
+            sys.exit(1)
+        return
+
+    if getattr(args, "unset", None):
+        key = args.unset.strip()
+        try:
+            if config.unset(key):
+                rich_print_log(f"\n✅ Unset [bold green]{key}[/bold green] from [green]{config.config_path}[/green]\n")
+            else:
+                rich_print_log(f"\n⚠️  [yellow]{key}[/yellow] was not found in [green]{config.config_path}[/green]\n")
+        except ValueError as e:
+            rich_print_log(f"\n❌ [bold red]Configuration error:[/bold red] {e}\n")
+            sys.exit(1)
+        return
+
+    # Default action for `config`: --list or display table
+    display_config_table(show_secrets=getattr(args, "show_secrets", False))
+
+def display_config_table(show_secrets=False):
+    from src.config import config
+    from rich.table import Table
+
+    items = config.list_all(show_secrets=show_secrets)
+    table = Table(title="⚙️  [bold cyan]Media Organizer & Renamer Configuration[/bold cyan]", title_justify="left")
+    table.add_column("Section", style="magenta", no_wrap=True)
+    table.add_column("Setting", style="white", no_wrap=True)
+    table.add_column("Value", style="green")
+    table.add_column("Source", style="yellow")
+
+    for item in items:
+        source_color = {
+            "ENV": "[bold cyan]ENV[/bold cyan]",
+            "INI": "[bold green]INI[/bold green]",
+            "LEGACY": "[yellow]config.py[/yellow]",
+            "DEFAULT": "[dim]DEFAULT[/dim]"
+        }.get(item["source"], item["source"])
+        
+        table.add_row(item["section"], item["key"], str(item["display_value"]), source_color)
+
+    rich_print_log()
+    rich_print_log(table)
+    rich_print_log(f"📄 Active INI file: [yellow]{config.config_path}[/yellow]")
+    if not show_secrets:
+        rich_print_log("🔒 Secrets masked. Use [cyan]--show-secrets[/cyan] to reveal.\n")
 
 def print_log(message):
     if LOG_ENABLED:

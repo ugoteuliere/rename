@@ -9,7 +9,7 @@ import json
 from src import ui, utils
 from data.data import QUALITY_PATTERNS, RESOLUTION_PATTERNS
 
-import config
+from src.config import config
 MOVIES_FOLDER = getattr(config, 'MOVIES_FOLDER', None)
 TV_SHOWS_FOLDER = getattr(config, 'TV_SHOWS_FOLDER', None)
 NOT_SORTED_MEDIA_FILES_FOLDER = getattr(config, 'NOT_SORTED_MEDIA_FILES_FOLDER', None)
@@ -24,7 +24,7 @@ def search_media_files(path):
 
     video_extensions = {'.mkv', '.mp4', '.avi', '.mov', '.wmv', '.m4v'}
     movie_re = r"^.+? \(\d{4}\)(?: \[[^\]]+\])?$"
-    series_re = r"^.+?(?: \(\d{4}\))? - S\d{2}E\d{2}(?: \[[^\]]+\])?$"
+    series_re = r"^.+?(?<! \(\d{4}\)) - S\d{2}E\d{2}(?: \[[^\]]+\])?$"
     
     messy_data_table = []
     clean_data_table = []
@@ -174,6 +174,7 @@ def sort_media_files(clean_data_table):
 
             tv_show_name = re.sub(r'\s*(?:-\s*)?S\d+E\d+.*$', '', str(movie['Corrected']), flags=re.IGNORECASE).strip()
             tv_show_name = re.sub(r'\s*\[.*?\]', '', tv_show_name).strip()
+            tv_show_name = re.sub(r'\s*\(\d{4}\)$', '', tv_show_name).strip()
 
             folder_path = Path(TV_SHOWS_FOLDER) / tv_show_name / season_folder
             folder_path.mkdir(parents=True, exist_ok=True)

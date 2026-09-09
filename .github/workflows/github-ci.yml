@@ -30,21 +30,26 @@ jobs:
       with:
         python-version: "3.14"
 
-    - name: Create config.py file
+    - name: Create config.ini file
       shell: bash
       run: |
-        cat << EOF > config.py
-        PATH="not_used_in_pytest"
-        MOVIES_FOLDER = "Films"
-        TV_SHOWS_FOLDER = "Séries"
-        NOT_SORTED_MEDIA_FILES_FOLDER = ".download"
-        MOVIES_FOLDER_NAME = "Films"
-        TV_SHOWS_FOLDER_NAME = "Séries"
-        NOT_SORTED_MEDIA_FILES_FOLDER_NAME = ".download"
-        GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
-        TMDB_API_KEY="${{ secrets.TMDB_API_KEY }}"
-        MAIL="${{ secrets.MAIL }}"
-        MAIL_PSWD="${{ secrets.MAIL_PSWD }}"
+        cat << EOF > config.ini
+        [paths]
+        movies_folder = Films
+        tv_shows_folder = Séries
+        not_sorted_media_files_folder = .download
+
+        [api]
+        gemini_api_key = ${{ secrets.GEMINI_API_KEY }}
+        tmdb_api_key = ${{ secrets.TMDB_API_KEY }}
+
+        [email]
+        mail = ${{ secrets.MAIL }}
+        mail_pswd = ${{ secrets.MAIL_PSWD }}
+
+        [options]
+        resolution = true
+        quality = true
         EOF
 
     - name: Install dependencies

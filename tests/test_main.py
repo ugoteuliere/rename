@@ -765,8 +765,8 @@ def test_sort_media_files_with_quality_and_resolution_tags(mock_print, tmp_path,
         ],
         'Media': ['tv', 'tv'],
         'Corrected': [
-            'Game of Thrones (2011) - S08E03 [FullHD BluRay]',
-            'Dark (2017) - S02E05 [4K WEB-DL]'
+            'Game of Thrones - S08E03 [FullHD BluRay]',
+            'Dark - S02E05 [4K WEB-DL]'
         ]
     }
     df = pd.DataFrame(data)
@@ -774,11 +774,11 @@ def test_sort_media_files_with_quality_and_resolution_tags(mock_print, tmp_path,
     result_paths = files.sort_media_files(df)
     assert len(result_paths) == 2
 
-    # Verify that clean show folders without trailing hyphens or brackets are created
-    assert (tmp_path / 'TV Shows' / 'Game of Thrones (2011)' / 'Season 08').exists()
-    assert (tmp_path / 'TV Shows' / 'Dark (2017)' / 'Season 02').exists()
-    assert result_paths[0][1] == tmp_path / 'TV Shows' / 'Game of Thrones (2011)' / 'Season 08' / 'Game of Thrones (2011) - S08E03 [FullHD BluRay].mkv'
-    assert result_paths[1][1] == tmp_path / 'TV Shows' / 'Dark (2017)' / 'Season 02' / 'Dark (2017) - S02E05 [4K WEB-DL].mkv'
+    # Verify that clean show folders without trailing hyphens, release year, or brackets are created
+    assert (tmp_path / 'TV Shows' / 'Game of Thrones' / 'Season 08').exists()
+    assert (tmp_path / 'TV Shows' / 'Dark' / 'Season 02').exists()
+    assert result_paths[0][1] == tmp_path / 'TV Shows' / 'Game of Thrones' / 'Season 08' / 'Game of Thrones - S08E03 [FullHD BluRay].mkv'
+    assert result_paths[1][1] == tmp_path / 'TV Shows' / 'Dark' / 'Season 02' / 'Dark - S02E05 [4K WEB-DL].mkv'
 
 
 @patch_globals
@@ -997,27 +997,27 @@ def test_generate_new_movie_filename_missing_metadata():
 def test_generate_new_tvshow_filename_variations(monkeypatch):
     monkeypatch.setattr(utils, "QUALITY", False)
     monkeypatch.setattr(utils, "RESOLUTION", False)
-    name = utils.generate_new_tvshow_filename(True, "Game of Thrones", None, 8, 3, None, None)
+    name = utils.generate_new_tvshow_filename(True, "Game of Thrones", 8, 3, None, None)
     assert name == "Game of Thrones - S08E03"
 
-    name_colon = utils.generate_new_tvshow_filename(True, "CSI: Crime Scene Investigation", "2000", "1", "2", None, None)
-    assert name_colon == "CSI - Crime Scene Investigation (2000) - S01E02"
+    name_colon = utils.generate_new_tvshow_filename(True, "CSI: Crime Scene Investigation", "1", "2", None, None)
+    assert name_colon == "CSI - Crime Scene Investigation - S01E02"
 
     monkeypatch.setattr(utils, "QUALITY", True)
     monkeypatch.setattr(utils, "RESOLUTION", True)
-    name_meta = utils.generate_new_tvshow_filename(True, "Dark", "2017", 2, 5, "FullHD", "WEB-DL")
-    assert name_meta == "Dark (2017) - S02E05 [WEB-DL FullHD]"
+    name_meta = utils.generate_new_tvshow_filename(True, "Dark", 2, 5, "FullHD", "WEB-DL")
+    assert name_meta == "Dark - S02E05 [WEB-DL FullHD]"
 
 
 def test_generate_new_tvshow_filename_missing_metadata():
     with pytest.raises(LookupError):
-        utils.generate_new_tvshow_filename(False, "Dark", "2017", 1, 1, None, None)
+        utils.generate_new_tvshow_filename(False, "Dark", 1, 1, None, None)
 
     with pytest.raises(LookupError):
-        utils.generate_new_tvshow_filename(True, "", "2017", 1, 1, None, None)
+        utils.generate_new_tvshow_filename(True, "", 1, 1, None, None)
 
     with pytest.raises(LookupError):
-        utils.generate_new_tvshow_filename(True, "Dark", "2017", None, 1, None, None)
+        utils.generate_new_tvshow_filename(True, "Dark", None, 1, None, None)
 
 
 def test_has_files_to_rename():
@@ -1379,15 +1379,19 @@ def test_correct_tv_show_filename_french_and_ai_fallback(monkeypatch):
             [True, "Lupin", "2021", "fr"]             # French call
         ]
         new_name, s, e = utils.correct_tv_show_filename(fake_file)
-        assert new_name == "Lupin (2021) - S01E01"
+        assert new_name == "Lupin - S01E01"
         assert s == "01"
         assert e == "01"
+        assert mock_api.call_args_list == [
+            call("Lupin", None, "en-US", "tv"),
+            call("Lupin", None, "fr-FR", "tv")
+        ]
 
     # Both TMDB calls fail, triggers AI Fallback
     with patch('src.api.api_call', return_value=[False, None, None, None]):
         with patch('src.api.gemini_api_call', return_value=[True, "AI Show", "2023", "en", []]):
             new_name, s, e = utils.correct_tv_show_filename(fake_file)
-            assert new_name == "AI Show (2021) - S01E01"
+            assert new_name == "AI Show - S01E01"
 
 
 def test_correct_tv_show_filename_exception_handling(monkeypatch):
@@ -1591,4 +1595,278 @@ def test_parse_filename_with_url_prefix():
     clean_title, clean_year, clean_res, clean_qual = utils.clean_filename(raw)
     assert clean_title == "Good Time"
     assert clean_year == "2017"
+
+
+# ==============================================================================
+# Tests for TV Show Plex Compliance & Release Year Omission
+# ==============================================================================
+
+def test_series_re_rejection_of_year():
+    import re
+    series_re = r"^.+?(?<! \(\d{4}\)) - S\d{2}E\d{2}(?: \[[^\]]+\])?$"
+    
+    # Clean TV shows without year should MATCH
+    assert re.fullmatch(series_re, "Breaking Bad - S01E01") is not None
+    assert re.fullmatch(series_re, "Game of Thrones - S08E03") is not None
+    assert re.fullmatch(series_re, "Dark - S02E05 [4K WEB-DL]") is not None
+    assert re.fullmatch(series_re, "SKAM (France) - S01E01") is not None
+
+    # TV shows WITH release year in parentheses should NOT match (must be cleaned)
+    assert re.fullmatch(series_re, "Breaking Bad (2008) - S01E01") is None
+    assert re.fullmatch(series_re, "Game of Thrones (2011) - S08E03") is None
+    assert re.fullmatch(series_re, "Dark (2017) - S02E05 [4K WEB-DL]") is None
+
+
+def test_correct_tv_show_filename_with_year_in_file(monkeypatch):
+    monkeypatch.setattr(utils, "RESOLUTION", False)
+    monkeypatch.setattr(utils, "QUALITY", False)
+
+    # File containing release year in filename
+    fake_file = {
+        'File': 'Dark.2017.S01E01.1080p.mkv',
+        'Path': '/tv/Dark.2017.S01E01.1080p.mkv',
+        'Parse': ['Dark', '2017', 1, 1, '1080p', None],
+        'Clean': ['Dark', '2017', '1080p', None]
+    }
+
+    with patch('src.api.api_call') as mock_api:
+        mock_api.return_value = [True, "Dark", "2017", "de"]
+        new_name, s, e = utils.correct_tv_show_filename(fake_file)
+        
+        # Must NOT contain (2017)
+        assert new_name == "Dark - S01E01"
+        assert s == "01"
+        assert e == "01"
+        # Must pass None as year for TV search on TMDB
+        mock_api.assert_called_once_with("Dark", None, "en-US", "tv")
+
+
+@patch_globals
+def test_sort_media_files_strips_existing_year_from_folder(mock_print, tmp_path, monkeypatch):
+    monkeypatch.setattr("src.files.MOVIES_FOLDER", str(tmp_path / 'Movies'))
+    monkeypatch.setattr("src.files.TV_SHOWS_FOLDER", str(tmp_path / 'TV Shows'))
+
+    dl_dir = tmp_path / 'downloads'
+    data = {
+        'Path': [str(dl_dir / 'got.mkv')],
+        'Media': ['tv'],
+        'Corrected': ['Game of Thrones (2011) - S08E03']
+    }
+    df = pd.DataFrame(data)
+
+    result_paths = files.sort_media_files(df)
+    assert len(result_paths) == 1
+    # Folder path must not contain (2011)
+    expected_folder = tmp_path / 'TV Shows' / 'Game of Thrones' / 'Season 08'
+    assert expected_folder.exists()
+    assert result_paths[0][1] == expected_folder / 'Game of Thrones (2011) - S08E03.mkv'
+
+
+# ==============================================================================
+# Tests for INI Configuration System, Environment Variables & CLI Commands
+# ==============================================================================
+
+from src.config import ConfigManager
+
+def test_config_manager_file_resolution(tmp_path, monkeypatch):
+    # 1. Custom path
+    custom_ini = tmp_path / "custom.ini"
+    cm_custom = ConfigManager(custom_path=str(custom_ini))
+    assert cm_custom.config_path == custom_ini
+
+    # 2. Environment variable RENAME_CONFIG_FILE
+    env_ini = tmp_path / "env_config.ini"
+    monkeypatch.setenv("RENAME_CONFIG_FILE", str(env_ini))
+    cm_env = ConfigManager()
+    assert cm_env.config_path == env_ini
+    monkeypatch.delenv("RENAME_CONFIG_FILE", raising=False)
+
+    # 3. Local override .rename.ini in cwd
+    local_ini = tmp_path / ".rename.ini"
+    local_ini.touch()
+    monkeypatch.chdir(tmp_path)
+    cm_local = ConfigManager()
+    assert cm_local.config_path == local_ini.resolve()
+
+
+def test_config_manager_env_precedence(tmp_path, monkeypatch):
+    test_ini = tmp_path / "test.ini"
+    cm = ConfigManager(custom_path=str(test_ini))
+    cm.set("paths.movies_folder", "D:/IniMovies")
+    assert cm.get("paths.movies_folder") == "D:/IniMovies"
+
+    # Environment variable should override INI
+    monkeypatch.setenv("RENAME_MOVIES_FOLDER", "E:/EnvMovies")
+    assert cm.get("paths.movies_folder") == "E:/EnvMovies"
+    val, source = cm.get_with_source("paths.movies_folder")
+    assert val == "E:/EnvMovies"
+    assert source == "ENV"
+
+    # Boolean environment variables
+    monkeypatch.setenv("RENAME_RESOLUTION", "1")
+    assert cm.get("options.resolution") is True
+    monkeypatch.setenv("RENAME_RESOLUTION", "false")
+    assert cm.get("options.resolution") is False
+
+
+def test_config_manager_get_set_unset(tmp_path):
+    test_ini = tmp_path / "test.ini"
+    cm = ConfigManager(custom_path=str(test_ini))
+
+    cm.set("paths.tv_shows_folder", "D:/TVShows")
+    assert cm.get("paths.tv_shows_folder") == "D:/TVShows"
+    assert cm.TV_SHOWS_FOLDER == "D:/TVShows"
+
+    # Boolean normalization
+    cm.set("options.quality", "yes")
+    assert cm.get("options.quality") is True
+    assert cm.QUALITY is True
+
+    # Unset
+    assert cm.unset("paths.tv_shows_folder") is True
+    assert cm.get("paths.tv_shows_folder") is None
+    assert cm.unset("paths.tv_shows_folder") is False
+
+    # Schema validation
+    with pytest.raises(ValueError) as exc:
+        cm.set("invalid_section.key", "val")
+    assert "Unknown section" in str(exc.value)
+
+    with pytest.raises(ValueError) as exc:
+        cm.set("paths.invalid_key", "val")
+    assert "Unknown key" in str(exc.value)
+
+    with pytest.raises(ValueError):
+        cm.set("no_dot_key", "val")
+
+    with pytest.raises(ValueError):
+        cm.unset("no_dot_key")
+
+
+def test_config_manager_atomic_write(tmp_path):
+    test_ini = tmp_path / "atomic" / "config.ini"
+    cm = ConfigManager(custom_path=str(test_ini))
+    cm.set("api.tmdb_api_key", "my_secret_token")
+    
+    assert test_ini.is_file()
+    content = test_ini.read_text(encoding="utf-8")
+    assert "tmdb_api_key = my_secret_token" in content
+
+
+def test_config_manager_secrets_masking(tmp_path):
+    test_ini = tmp_path / "test.ini"
+    cm = ConfigManager(custom_path=str(test_ini))
+    cm.set("api.tmdb_api_key", "eyJhbGciOiJIUzI1NiJ9.secret1234567890")
+    cm.set("mail.mail_pswd", "short")
+
+    items_masked = cm.list_all(show_secrets=False)
+    tmdb_item = next(i for i in items_masked if i["full_key"] == "api.tmdb_api_key")
+    assert "secret" not in tmdb_item["display_value"]
+    assert "****" in tmdb_item["display_value"]
+
+    items_unmasked = cm.list_all(show_secrets=True)
+    tmdb_unmasked = next(i for i in items_unmasked if i["full_key"] == "api.tmdb_api_key")
+    assert tmdb_unmasked["display_value"] == "eyJhbGciOiJIUzI1NiJ9.secret1234567890"
+
+
+def test_config_wizard_mocked(tmp_path, monkeypatch):
+    test_ini = tmp_path / "wizard_config.ini"
+    cm = ConfigManager(custom_path=str(test_ini))
+
+    # Mock Prompt.ask and Confirm.ask from rich
+    with patch("rich.prompt.Prompt.ask", side_effect=[
+        "D:/WizardMovies",      # movies
+        "D:/WizardTV",          # tv
+        "D:/WizardDownloads",   # downloads
+        "wizard_tmdb_key",      # tmdb
+        "wizard_gemini_key",    # gemini
+        "wizard@gmail.com",     # email
+        "app_password_16ch",    # email password
+    ]):
+        with patch("rich.prompt.Confirm.ask", side_effect=[True, False]): # resolution=True, quality=False
+            cm.run_wizard()
+
+    assert cm.get("paths.movies_folder") == "D:/WizardMovies"
+    assert cm.get("paths.tv_shows_folder") == "D:/WizardTV"
+    assert cm.get("paths.not_sorted_media_files_folder") == "D:/WizardDownloads"
+    assert cm.get("api.tmdb_api_key") == "wizard_tmdb_key"
+    assert cm.get("api.gemini_api_key") == "wizard_gemini_key"
+    assert cm.get("mail.mail") == "wizard@gmail.com"
+    assert cm.get("mail.mail_pswd") == "app_password_16ch"
+    assert cm.get("options.resolution") is True
+    assert cm.get("options.quality") is False
+
+
+def test_cli_config_commands(tmp_path, monkeypatch):
+    test_ini = tmp_path / "cli_test.ini"
+    monkeypatch.setenv("RENAME_CONFIG_FILE", str(test_ini))
+
+    import main
+    from unittest.mock import MagicMock
+
+    # 1. config --set
+    monkeypatch.setattr(sys, "argv", ["main.py", "config", "--set", "paths.movies_folder", "D:/CliMovies"])
+    assert main.main() == 0
+
+    # 2. config --get
+    monkeypatch.setattr(sys, "argv", ["main.py", "config", "--get", "paths.movies_folder"])
+    assert main.main() == 0
+
+    # 3. config --path
+    monkeypatch.setattr(sys, "argv", ["main.py", "config", "--path"])
+    assert main.main() == 0
+
+    # 4. config --list
+    monkeypatch.setattr(sys, "argv", ["main.py", "config", "--list"])
+    assert main.main() == 0
+
+    # 5. config --unset
+    monkeypatch.setattr(sys, "argv", ["main.py", "config", "--unset", "paths.movies_folder"])
+    assert main.main() == 0
+
+    # 6. configure (launch wizard)
+    monkeypatch.setattr(sys, "argv", ["main.py", "configure"])
+    with patch("src.config.ConfigManager.run_wizard") as mock_wiz:
+        assert main.main() == 0
+        mock_wiz.assert_called_once()
+
+
+def test_actionable_error_messages(tmp_path, monkeypatch, capsys):
+    # 1. verify_folders() with missing folders shows tips
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", None)
+    with patch("src.ui.print_log") as mock_log:
+        with pytest.raises(SystemExit):
+            utils.verify_folders()
+        logged = mock_log.call_args[0][0]
+        assert "paths.movies_folder" in logged
+        assert "configure" in logged
+
+    # 2. verify_folders() with non-existent directory on disk shows tips
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", str(tmp_path / "does_not_exist_xyz"))
+    monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", str(tmp_path))
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", str(tmp_path))
+    with patch("src.ui.print_log") as mock_log:
+        with pytest.raises(SystemExit):
+            utils.verify_folders()
+        logged = mock_log.call_args[0][0]
+        assert "Missing required folder(s) on disk" in logged
+
+    # 3. api.api_call() with missing TMDB key shows tips
+    monkeypatch.setattr(api, "TMDB_API_KEY", None)
+    with patch("src.api.print_log") as mock_log:
+        with pytest.raises(SystemExit):
+            api.api_call("Inception", "2010", "en-US", "movie")
+        logged = mock_log.call_args[0][0]
+        assert "api.tmdb_api_key" in logged
+        assert "configure" in logged
+
+    # 4. api.gemini_api_call() with missing Gemini key shows tips
+    monkeypatch.setattr(api, "GEMINI_API_KEY", None)
+    with patch("src.api.print_log") as mock_log:
+        with pytest.raises(SystemExit):
+            api.gemini_api_call({'File': 't.mkv', 'Folder': 'd', 'Path': '/d/t.mkv', 'Clean': 't', 'Parse': 't', 'Media': 'movie'})
+        logged = mock_log.call_args[0][0]
+        assert "api.gemini_api_key" in logged
+        assert "configure" in logged
+
 

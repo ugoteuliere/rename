@@ -3,7 +3,7 @@ import ssl
 from email.message import EmailMessage
 from src import ui
 
-import config
+from src.config import config
 MAIL_PSWD = getattr(config, 'MAIL_PSWD', None)
 MAIL = getattr(config, 'MAIL', None)
 

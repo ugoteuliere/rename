@@ -7,14 +7,25 @@ from src.mail import send_email
 from src.ui import print_log, print_error, VERBOSE_ENABLED
 from data.data import TAGS
 
-import config
+from src.config import config
 TMDB_API_KEY = getattr(config, 'TMDB_API_KEY', None)
 GEMINI_API_KEY = getattr(config, 'GEMINI_API_KEY', None)
 
 def api_call(name, year, language, media_type):
     api_key = TMDB_API_KEY
     if api_key == None:
-        print_log("❌ Missing configuration: \nThe global variable TMDB_API_KEY needs to be configured in a config.py file at the root of the script. Please refer to the following documentation: https://github.com/ugoteuliere/rename\n\n Stopping program.")
+        print_log(
+            "❌ Missing configuration: TMDB API key is not configured.\n"
+            "The TMDB API key is required to identify and fetch metadata for media files.\n\n"
+            "💡 How to fix:\n"
+            "  1. Run the interactive setup wizard:\n"
+            "     python main.py configure\n"
+            "  2. Or set the key via CLI:\n"
+            "     python main.py config --set api.tmdb_api_key \"<your_tmdb_api_key>\"\n"
+            "  3. Or set the environment variable:\n"
+            "     export RENAME_TMDB_API_KEY=\"<your_tmdb_api_key>\"\n\n"
+            "Stopping program."
+        )
         sys.exit(1)
     encoded_query = urllib.parse.quote(name)
     
@@ -98,7 +109,18 @@ def gemini_api_call(media_info):
     """
     
     if GEMINI_API_KEY == None:
-        print_log("❌ Missing configuration: \nThe global variable GEMINI_API_KEY needs to be configured in a config.py file at the root of the script. Please refer to the following documentation: https://github.com/ugoteuliere/rename\n\n Stopping program.")
+        print_log(
+            "❌ Missing configuration: Gemini API key is not configured.\n"
+            "The Gemini API key is required for AI fallback parsing of obfuscated filenames.\n\n"
+            "💡 How to fix:\n"
+            "  1. Run the interactive setup wizard:\n"
+            "     python main.py configure\n"
+            "  2. Or set the key via CLI:\n"
+            "     python main.py config --set api.gemini_api_key \"<your_gemini_api_key>\"\n"
+            "  3. Or set the environment variable:\n"
+            "     export RENAME_GEMINI_API_KEY=\"<your_gemini_api_key>\"\n\n"
+            "Stopping program."
+        )
         sys.exit(1)
     
     # call api

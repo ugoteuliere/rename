@@ -7,6 +7,11 @@ def main():
         # verify environment
         args = ui.parse_arguments()
         
+        # handle config subcommands
+        if getattr(args, "subcommand", None) in ("config", "configure"):
+            ui.handle_config_command(args)
+            return 0
+        
         if not args.path:
             utils.verify_folders()
         
