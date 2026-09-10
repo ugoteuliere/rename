@@ -146,8 +146,34 @@ def test_call_gemini_batch_success_and_errors(monkeypatch):
 
     # 5. Invalid JSON
     mock_resp.text = "{invalid json"
+    mock_client.models.generate_content.side_effect = None
+    mock_client.models.generate_content.return_value = mock_resp
     with patch("google.genai.Client", return_value=mock_client):
         with pytest.raises(ValueError, match="Failed to parse Gemini response as JSON"):
+            api.call_gemini_batch(dummy_items)
+
+    # 6. Model fallback on non-quota error and quota exception propagation
+    valid_resp = MagicMock()
+    valid_resp.text = json.dumps({"items": [{"file_id": 0, "title": "Fallback Movie", "confidence_score": 0.9}]})
+    mock_client.models.generate_content.side_effect = [
+        RuntimeError("Model not found"),
+        valid_resp
+    ]
+    with patch("google.genai.Client", return_value=mock_client):
+        res = api.call_gemini_batch(dummy_items)
+        assert len(res.items) == 1
+        assert res.items[0].title == "Fallback Movie"
+
+    # Quota error raises immediately
+    mock_client.models.generate_content.side_effect = RuntimeError("429 RESOURCE_EXHAUSTED")
+    with patch("google.genai.Client", return_value=mock_client):
+        with pytest.raises(RuntimeError, match="RESOURCE_EXHAUSTED"):
+            api.call_gemini_batch(dummy_items)
+
+    # All models fail with non-quota error
+    mock_client.models.generate_content.side_effect = RuntimeError("Server down")
+    with patch("google.genai.Client", return_value=mock_client):
+        with pytest.raises(RuntimeError, match="Server down"):
             api.call_gemini_batch(dummy_items)
 
 
@@ -418,6 +444,74 @@ def test_execute_ai_batch_with_failover_scenarios(monkeypatch):
 
         results = api.execute_ai_batch_with_failover([dummy_items[0]])
         assert results[0][0] is False
+
+
+def test_unit_groq_limit_bypassed_to_openrouter():
+    """Unit test: When Groq returns a rate limit / 429 quota error, orchestrator bypasses Groq and uses OpenRouter."""
+    dummy_items = [{'File': 'Film.mkv', 'Folder': 'dl', 'Path': '/dl/Film.mkv', 'Clean': 'Film', 'Parse': 'Film', 'Media': 'movie'}]
+    expected_resp = BatchMediaResponse(items=[
+        ParsedMediaItem(file_id=0, title="Film OpenRouter", year="2022", original_language="en", confidence_score=0.95)
+    ])
+
+    with patch("src.api.get_prioritized_providers", return_value=["groq", "openrouter"]), \
+         patch("src.api.call_groq_batch", side_effect=RuntimeError("Groq 429: Too many requests. Rate limit exceeded.")), \
+         patch("src.api.call_openrouter_batch", return_value=expected_resp) as mock_or:
+
+        results = api.execute_ai_batch_with_failover(dummy_items)
+        assert len(results) == 1
+        assert results[0] == [True, "Film OpenRouter", "2022", "en", []]
+        mock_or.assert_called_once()
+
+
+def test_unit_openrouter_limit_bypassed_to_cloudflare():
+    """Unit test: When OpenRouter returns quota exhausted error, orchestrator bypasses OpenRouter and uses Cloudflare."""
+    dummy_items = [{'File': 'Film.mkv', 'Folder': 'dl', 'Path': '/dl/Film.mkv', 'Clean': 'Film', 'Parse': 'Film', 'Media': 'movie'}]
+    expected_resp = BatchMediaResponse(items=[
+        ParsedMediaItem(file_id=0, title="Film Cloudflare", year="2023", original_language="fr", confidence_score=0.91)
+    ])
+
+    with patch("src.api.get_prioritized_providers", return_value=["openrouter", "cloudflare"]), \
+         patch("src.api.call_openrouter_batch", side_effect=RuntimeError("OpenRouter error (status 429): Insufficient credits / rate limit")), \
+         patch("src.api.call_cloudflare_batch", return_value=expected_resp) as mock_cf:
+
+        results = api.execute_ai_batch_with_failover(dummy_items)
+        assert len(results) == 1
+        assert results[0] == [True, "Film Cloudflare", "2023", "fr", []]
+        mock_cf.assert_called_once()
+
+
+def test_unit_cloudflare_limit_bypassed_to_gemini():
+    """Unit test: When Cloudflare returns daily neuron limit error, orchestrator bypasses Cloudflare and uses Gemini."""
+    dummy_items = [{'File': 'Film.mkv', 'Folder': 'dl', 'Path': '/dl/Film.mkv', 'Clean': 'Film', 'Parse': 'Film', 'Media': 'movie'}]
+    expected_resp = BatchMediaResponse(items=[
+        ParsedMediaItem(file_id=0, title="Film Gemini", year="2024", original_language="en", confidence_score=0.93)
+    ])
+
+    with patch("src.api.get_prioritized_providers", return_value=["cloudflare", "gemini"]), \
+         patch("src.api.call_cloudflare_batch", side_effect=RuntimeError("Cloudflare Workers AI error (status 429): daily neuron quota exhausted")), \
+         patch("src.api.call_gemini_batch", return_value=expected_resp) as mock_gem:
+
+        results = api.execute_ai_batch_with_failover(dummy_items)
+        assert len(results) == 1
+        assert results[0] == [True, "Film Gemini", "2024", "en", []]
+        mock_gem.assert_called_once()
+
+
+def test_unit_gemini_limit_bypassed_to_groq():
+    """Unit test: When Gemini returns ResourceExhausted 429 error, orchestrator bypasses Gemini and uses Groq."""
+    dummy_items = [{'File': 'Film.mkv', 'Folder': 'dl', 'Path': '/dl/Film.mkv', 'Clean': 'Film', 'Parse': 'Film', 'Media': 'movie'}]
+    expected_resp = BatchMediaResponse(items=[
+        ParsedMediaItem(file_id=0, title="Film Groq", year="2021", original_language="en", confidence_score=0.96)
+    ])
+
+    with patch("src.api.get_prioritized_providers", return_value=["gemini", "groq"]), \
+         patch("src.api.call_gemini_batch", side_effect=RuntimeError("429 RESOURCE_EXHAUSTED: quota exceeded")), \
+         patch("src.api.call_groq_batch", return_value=expected_resp) as mock_gr:
+
+        results = api.execute_ai_batch_with_failover(dummy_items)
+        assert len(results) == 1
+        assert results[0] == [True, "Film Groq", "2021", "en", []]
+        mock_gr.assert_called_once()
 
 
 def test_gemini_api_call_with_alternative_provider(monkeypatch):

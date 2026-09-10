@@ -134,14 +134,27 @@ def call_gemini_batch(media_items: list[dict]) -> BatchMediaResponse:
     client = genai.Client(api_key=g_key)
     prompt = SYSTEM_PROMPT.format(TAGS=TAGS) + "\n\n" + build_batch_user_prompt(media_items)
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash-lite",
-        contents=prompt,
-        config=genai.types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=BatchMediaResponse,
-        ),
-    )
+    models = ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-flash"]
+    last_err = None
+    response = None
+    for model_name in models:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=genai.types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=BatchMediaResponse,
+                ),
+            )
+            break
+        except Exception as e:
+            last_err = e
+            if is_quota_or_rate_limit_error(e):
+                raise
+
+    if response is None:
+        raise last_err
 
     try:
         data = json.loads(response.text)
@@ -484,13 +497,22 @@ def gemini_api_call(media_info):
     # call api
     try:
         client = genai.Client(api_key=gemini_key)
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-lite", 
-            contents=prompt,
-            config=genai.types.GenerateContentConfig(
-                response_mime_type="application/json", 
-            ),
-        )
+        response = None
+        last_err = None
+        for model_name in ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-flash"]:
+            try:
+                response = client.models.generate_content(
+                    model=model_name, 
+                    contents=prompt,
+                    config=genai.types.GenerateContentConfig(
+                        response_mime_type="application/json", 
+                    ),
+                )
+                break
+            except Exception as ex:
+                last_err = ex
+        if response is None:
+            raise last_err
     except Exception as e:
         raise RuntimeError(print_error(" ❌ Error: GEMINI API call failed", e))
 
