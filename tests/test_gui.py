@@ -124,9 +124,10 @@ def test_config_gui_init_and_load(tk_root, temp_cm):
     dummy.var_status = app.var_status
     ConfigGUI._on_status_change(dummy)
 
-    # Test DWM dark mode exception branch
-    with patch("ctypes.windll.dwmapi.DwmSetWindowAttribute", side_effect=Exception("DWM error")):
-        ConfigGUI(tk_root, cm=temp_cm)
+    # Test DWM dark mode exception branch on Windows
+    if sys.platform == "win32":
+        with patch("ctypes.windll.dwmapi.DwmSetWindowAttribute", side_effect=Exception("DWM error")):
+            ConfigGUI(tk_root, cm=temp_cm)
 
     # Test theme exception branch
     with patch.object(ttk.Style, "theme_use", side_effect=Exception("theme error")):
