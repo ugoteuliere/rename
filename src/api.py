@@ -279,9 +279,13 @@ def call_cloudflare_batch(media_items: list[dict]) -> BatchMediaResponse:
         raise RuntimeError(f"Cloudflare Workers AI error (status {resp.status_code}): {resp.text}")
 
     data = resp.json()
-    raw_response = data.get("result", {}).get("response", "")
-    if not raw_response and "result" in data and isinstance(data["result"], dict):
-        raw_response = json.dumps(data["result"])
+    res_obj = data.get("result", {})
+    if isinstance(res_obj, dict) and "choices" in res_obj and res_obj["choices"]:
+        raw_response = res_obj["choices"][0].get("message", {}).get("content", "")
+    elif isinstance(res_obj, dict) and "response" in res_obj:
+        raw_response = res_obj["response"]
+    else:
+        raw_response = json.dumps(res_obj)
     cleaned = raw_response.strip()
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
