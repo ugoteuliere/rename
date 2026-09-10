@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 import pandas as pd
 
 import main
-from src import ui, files
+from src import ui, files, utils
 
 def test_simulation_mode_prevents_file_changes_and_emails(tmp_path, monkeypatch):
     # Setup folders
@@ -26,6 +26,9 @@ def test_simulation_mode_prevents_file_changes_and_emails(tmp_path, monkeypatch)
     monkeypatch.setattr(files, "MOVIES_FOLDER", str(movies))
     monkeypatch.setattr(files, "TV_SHOWS_FOLDER", str(tv_shows))
     monkeypatch.setattr(files, "NOT_SORTED_MEDIA_FILES_FOLDER", str(downloads))
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", str(movies))
+    monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", str(tv_shows))
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", str(downloads))
 
     # Mock search_media_files and get_corrected_media_filenames
     messy_df = pd.DataFrame([{

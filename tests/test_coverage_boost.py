@@ -252,10 +252,20 @@ def test_resolve_config_path_variations(tmp_path, monkeypatch):
     assert "pytest_rename_quarantine" in str(quarantine)
     monkeypatch.delenv("PYTEST_CURRENT_TEST")
 
-    # 4. NT without APPDATA
-    with patch("os.name", "nt"), patch.dict(os.environ, {"USERPROFILE": str(tmp_path), "HOME": str(tmp_path)}, clear=True):
-        nt_path = cm._resolve_config_path()
-        assert ".config" in str(nt_path)
+    # 4. NT with and without APPDATA
+    with patch("os.name", "nt"), patch("src.config.Path") as mock_p:
+        mock_p(".rename.ini").resolve.return_value.is_file.return_value = False
+        mock_p("config.ini").resolve.return_value.is_file.return_value = False
+        with patch.dict(os.environ, {"APPDATA": "C:\\AppData"}, clear=True):
+            cm._resolve_config_path()
+            mock_p.assert_any_call("C:\\AppData")
+
+        mock_p.reset_mock()
+        mock_p(".rename.ini").resolve.return_value.is_file.return_value = False
+        mock_p("config.ini").resolve.return_value.is_file.return_value = False
+        with patch.dict(os.environ, {}, clear=True):
+            cm._resolve_config_path()
+            mock_p.home.assert_called_once()
 
     # 5. Posix with XDG_CONFIG_HOME
     with patch("os.name", "posix"), patch("src.config.Path") as mock_p:
