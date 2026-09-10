@@ -137,6 +137,11 @@ class ConfigManager:
             temp_path = tf.name
 
         shutil.move(temp_path, str(self.config_path))
+        if os.name != 'nt':
+            try:
+                os.chmod(self.config_path, 0o600)
+            except OSError:
+                pass
 
     def get_with_source(self, section_dot_key: str):
         """Returns tuple of (value, source) where source is 'ENV', 'INI', or 'DEFAULT'."""

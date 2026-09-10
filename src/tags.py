@@ -143,7 +143,21 @@ class TagManager:
         if self._master_regex is not None:
             return self._master_regex
 
-        tags = self.get_all_tags()
+        # Core tags are repository-maintained regex patterns
+        core_tags = self.load_core_tags()
+        # User and Gemini tags are untrusted inputs that must be escaped to prevent ReDoS or syntax errors
+        user_tags = [re.escape(t) for t in self.load_user_tags() if t.strip()]
+        gemini_tags = [re.escape(t) for t in self.load_gemini_tags() if t.strip()]
+
+        seen = set()
+        tags = []
+        for tag in core_tags + user_tags + gemini_tags:
+            clean = tag.strip()
+            key = clean.lower()
+            if clean and key not in seen:
+                seen.add(key)
+                tags.append(clean)
+
         if not tags:
             self._master_regex = re.compile(r'(?!)')  # Matches nothing
             return self._master_regex

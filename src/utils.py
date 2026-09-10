@@ -397,15 +397,45 @@ def correct_tv_show_filename(file):
 
     return new_filename, season, episode
 
+def sanitize_filename(name: str) -> str:
+    """Sanitizes a title or filename component against directory traversal and forbidden characters."""
+    if not name or not isinstance(name, str):
+        return ""
+
+    # Replace colons with standard title separator " -"
+    sanitized = name.replace(":", " -")
+
+    # Remove directory traversal segments (e.g. "../" or "..\" or standalone "..")
+    sanitized = re.sub(r'(?:\.\.[\\/]+)+', '', sanitized)
+    sanitized = re.sub(r'\.{2,}', '', sanitized)
+
+    # Replace illegal filesystem characters (\ / * ? " < > | and null bytes) with hyphen
+    sanitized = re.sub(r'[\x00\\/*?"<>|]', '-', sanitized)
+
+    # Collapse multiple consecutive hyphens or spaces
+    sanitized = re.sub(r'-{2,}', '-', sanitized)
+    sanitized = re.sub(r'\s+', ' ', sanitized)
+
+    # Strip leading/trailing dots, hyphens, and whitespace
+    sanitized = sanitized.strip('. -')
+
+    return sanitized
+
 def generate_new_movie_filename(success, title, year, resolution, quality):
     is_title_valid = title and str(title).strip()
 
     if not success or not is_title_valid :
         raise LookupError("API calls failed or essential metadata (Title) is missing/empty.")
 
-    new_name = title.replace(':', ' -')
+    safe_title = sanitize_filename(title)
+    if not safe_title:
+        raise LookupError("Title contains only invalid characters.")
+
+    new_name = safe_title
     if year and str(year).strip():
-        new_name += f" ({year})"
+        safe_year = re.sub(r'[^0-9]', '', str(year).strip())
+        if safe_year:
+            new_name += f" ({safe_year})"
 
     # quality and resolution
     metadata_parts = []
@@ -426,7 +456,11 @@ def generate_new_tvshow_filename(success, title, season, episode, resolution=Non
     if not success or not is_title_valid or not is_season_valid or not is_episode_valid:
         raise LookupError("API calls failed or essential metadata (Title, Season, or Episode) is missing/empty.")
 
-    new_name = title.replace(':', ' -')
+    safe_title = sanitize_filename(title)
+    if not safe_title:
+        raise LookupError("Title contains only invalid characters.")
+
+    new_name = safe_title
 
     # season and episode
     s_padded = str(season).zfill(2)
