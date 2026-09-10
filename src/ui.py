@@ -117,6 +117,7 @@ def parse_arguments():
         help="View and manage configuration settings (INI file & environment variables).",
         formatter_class=argparse.RawTextHelpFormatter
     )
+    config_parser.add_argument("-g", "--gui", action="store_true", help="Launch modern graphical configuration interface (GUI).")
     config_parser.add_argument("-l", "--list", action="store_true", help="List all configured settings and their sources.")
     config_parser.add_argument("--show-secrets", action="store_true", help="Display sensitive values (API keys, passwords) without masking.")
     config_parser.add_argument("--get", metavar="KEY", help="Get the value for a specific setting (e.g. paths.movies_folder, api.tmdb_api_key).")
@@ -124,7 +125,18 @@ def parse_arguments():
     config_parser.add_argument("--unset", metavar="KEY", help="Remove a configuration setting from the INI file.")
     config_parser.add_argument("--path", action="store_true", help="Display the path of the active configuration file.")
 
-    subparsers.add_parser("configure", help="Launch interactive configuration wizard.")
+    configure_parser = subparsers.add_parser(
+        "configure",
+        help="Launch interactive configuration wizard or GUI.",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    configure_parser.add_argument("-g", "--gui", action="store_true", help="Launch modern graphical configuration tool (GUI).")
+    configure_parser.add_argument("--paths", action="store_true", help="Configure storage and library folders directly.")
+    configure_parser.add_argument("--ai", action="store_true", help="Configure API keys and Cloud AI providers directly.")
+    configure_parser.add_argument("--email", action="store_true", help="Configure email alerts and SMTP credentials directly.")
+    configure_parser.add_argument("--options", action="store_true", help="Configure runtime and automation options directly.")
+    configure_parser.add_argument("--video", action="store_true", help="Configure video stream options directly.")
+    configure_parser.add_argument("--full", action="store_true", help="Run full step-by-step setup wizard without menu.")
 
     args = parser.parse_args()
 
@@ -232,8 +244,25 @@ def parse_arguments():
 def handle_config_command(args):
     from src.config import config
     
+    if getattr(args, "gui", None) is True:
+        config.run_gui()
+        return
+
     if getattr(args, "subcommand", None) == "configure":
-        config.run_wizard()
+        section = None
+        if getattr(args, "paths", None) is True:
+            section = "paths"
+        elif getattr(args, "ai", None) is True:
+            section = "ai"
+        elif getattr(args, "email", None) is True:
+            section = "email"
+        elif getattr(args, "options", None) is True:
+            section = "options"
+        elif getattr(args, "video", None) is True:
+            section = "video"
+        
+        run_full = getattr(args, "full", None) is True
+        config.run_wizard(section=section, interactive_menu=(not run_full and section is None))
         return
 
     if getattr(args, "path", False):

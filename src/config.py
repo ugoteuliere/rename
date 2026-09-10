@@ -291,22 +291,20 @@ class ConfigManager:
                 })
         return items
 
-    def run_wizard(self):
-        """Interactive terminal configuration wizard."""
+    def run_gui(self) -> bool:
+        """Launches the graphical configuration interface."""
+        from src.gui import launch_config_gui
+        return launch_config_gui(self)
+
+    def wizard_paths(self, console=None):
+        """Interactive setup for media storage folders."""
         from rich.console import Console
-        from rich.prompt import Prompt, Confirm
+        from rich.prompt import Prompt
+        console = console or Console()
 
-        console = Console()
-        console.print("\n[bold cyan]==============================================[/bold cyan]")
-        console.print("[bold cyan]   🎬 Media Organizer & Renamer Setup Wizard   [/bold cyan]")
-        console.print("[bold cyan]==============================================[/bold cyan]\n")
-        console.print(f"Target Configuration File: [yellow]{self.config_path}[/yellow]\n")
-        console.print("Press [green]Enter[/green] to keep current value.\n")
-
-        # --- 1. Folder Paths ---
-        console.print("[bold magenta]📂 Folder Paths Configuration[/bold magenta]")
+        console.print("\n[bold magenta]📂 Folder Paths Configuration[/bold magenta]")
         console.print("[dim]Best Practice: Keep incoming downloads in an unsorted folder, separate from your Movies and TV Shows libraries. Folders can be local drives, USB disks, or NAS network shares.[/dim]")
-        
+
         def _prompt_and_validate_folder(label, key):
             current = self.get(key) or ""
             folder_input = Prompt.ask(label, default=current)
@@ -320,10 +318,15 @@ class ConfigManager:
         _prompt_and_validate_folder("TV Shows Folder", "paths.tv_shows_folder")
         _prompt_and_validate_folder("Unsorted Downloads Folder", "paths.not_sorted_media_files_folder")
 
-        # --- 2. API Keys ---
+    def wizard_api(self, console=None):
+        """Interactive setup for TMDB and Cloud AI providers."""
+        from rich.console import Console
+        from rich.prompt import Prompt
+        console = console or Console()
+
         console.print("\n[bold magenta]🔑 API Keys Configuration[/bold magenta]")
-        console.print("[dim]Best Practice: TMDB API key is required to query official movie/series metadata. Gemini AI key is an optional fallback for highly cryptic filenames.[/dim]")
-        
+        console.print("[dim]Best Practice: TMDB API key is required to query official movie/series metadata. Cloud AI providers act as optional fallbacks for highly cryptic filenames.[/dim]")
+
         current_tmdb = self.get("api.tmdb_api_key") or ""
         tmdb_masked = f"{current_tmdb[:4]}...{current_tmdb[-4:]}" if len(current_tmdb) > 8 else current_tmdb
         tmdb_input = Prompt.ask("TMDB API Key (Bearer/v3 token)", default=tmdb_masked)
@@ -360,7 +363,12 @@ class ConfigManager:
         if cf_acc_input.strip() and cf_acc_input != cf_acc_masked:
             self.set("api.cloudflare_account_id", cf_acc_input)
 
-        # --- 3. Email Alerts (Optional) ---
+    def wizard_email(self, console=None):
+        """Interactive setup for email alerts."""
+        from rich.console import Console
+        from rich.prompt import Prompt
+        console = console or Console()
+
         console.print("\n[bold magenta]📧 Email Alerts Configuration (Optional)[/bold magenta]")
         console.print("[dim]Best Practice: Useful for headless/server cron jobs. Requires a 16-letter Gmail App Password created via Google Account Security.[/dim]")
         current_mail = self.get("mail.mail") or ""
@@ -374,7 +382,12 @@ class ConfigManager:
         if pswd_input.strip() and pswd_input != pswd_masked:
             self.set("mail.mail_pswd", pswd_input)
 
-        # --- 4. Automation & Runtime Options ---
+    def wizard_options(self, console=None):
+        """Interactive setup for automation and runtime options."""
+        from rich.console import Console
+        from rich.prompt import Prompt, Confirm
+        console = console or Console()
+
         console.print("\n[bold magenta]⚙️ Automation & Runtime Options[/bold magenta]")
         console.print("[dim]Best Practice: Set default execution behaviors so you do not need to specify flags on every run. CLI flags (-b, -i, -L, -l, -v, -t) will always override these defaults.[/dim]")
         cur_bypass = bool(self.get("options.bypass", False))
@@ -397,11 +410,11 @@ class ConfigManager:
             self.set("options.polling_interval", "15")
 
         cur_ai = bool(self.get("options.ai", False))
-        ai_input = Confirm.ask("Enable Gemini AI fallback by default for unrecognized filenames (-i)?", default=cur_ai)
+        ai_input = Confirm.ask("Enable Cloud AI fallback by default for unrecognized filenames (-i)?", default=cur_ai)
         self.set("options.ai", "true" if ai_input else "false")
 
         cur_learn = bool(self.get("options.learn", False))
-        learn_input = Confirm.ask("Enable AI keyword learning by default (save missing tags discovered by Gemini) (-L)?", default=cur_learn)
+        learn_input = Confirm.ask("Enable AI keyword learning by default (save missing tags discovered by AI) (-L)?", default=cur_learn)
         self.set("options.learn", "true" if learn_input else "false")
 
         cur_prov = str(self.get("options.ai_provider") or "auto")
@@ -429,7 +442,12 @@ class ConfigManager:
         notify_tag_input = Confirm.ask("Send an email notification when a new AI keyword tag is learned (-t)?", default=cur_tag)
         self.set("options.notify_on_tag", "true" if notify_tag_input else "false")
 
-        # --- 5. Technical Video Tags ---
+    def wizard_video(self, console=None):
+        """Interactive setup for video stream FFmpeg tags."""
+        from rich.console import Console
+        from rich.prompt import Confirm
+        console = console or Console()
+
         console.print("\n[bold magenta]🎞️ Video Stream Options (Requires FFmpeg)[/bold magenta]")
         console.print("[dim]Best Practice: Extracts video stream metadata to append clean tags (e.g. [4K] [1080p] [BluRay]). Requires 'ffprobe' installed in System PATH.[/dim]")
         cur_res = bool(self.get("options.resolution", False))
@@ -444,6 +462,70 @@ class ConfigManager:
             console.print("\n[bold red]❌ Error: 'ffprobe' (FFmpeg) was not found in your System PATH.[/bold red]")
             console.print("[yellow]Resolution and quality tags will fail to be detected until FFmpeg is installed.[/yellow]")
             console.print("[dim]Installation guide: docs/documentation.md#ffmpeg-setup[/dim]")
+
+    def run_wizard(self, section: Optional[str] = None, interactive_menu: bool = False):
+        """Interactive terminal configuration wizard with modular menus and direct section access."""
+        from rich.console import Console
+        from rich.prompt import Prompt
+
+        console = Console()
+        console.print("\n[bold cyan]==============================================[/bold cyan]")
+        console.print("[bold cyan]   🎬 Media Organizer & Renamer Setup Wizard   [/bold cyan]")
+        console.print("[bold cyan]==============================================[/bold cyan]\n")
+        console.print(f"Target Configuration File: [yellow]{self.config_path}[/yellow]\n")
+
+        if interactive_menu and section is None:
+            console.print("[bold]Select configuration category:[/bold]")
+            console.print("  [cyan]1.[/cyan] 📂 Folders & Storage Paths")
+            console.print("  [cyan]2.[/cyan] 🔑 API Keys & Cloud AI Providers")
+            console.print("  [cyan]3.[/cyan] 📧 Email Alerts & Notifications")
+            console.print("  [cyan]4.[/cyan] ⚙️ Automation & Runtime Options")
+            console.print("  [cyan]5.[/cyan] 🎞️ Video Stream Options (FFmpeg)")
+            console.print("  [cyan]6.[/cyan] 🚀 Run Full Setup Wizard (all categories)")
+            console.print("  [cyan]7.[/cyan] 🖥️ Launch Graphical Configuration Tool (GUI)")
+            console.print("  [cyan]8.[/cyan] ❌ Exit\n")
+
+            choice = Prompt.ask("Enter choice", choices=["1", "2", "3", "4", "5", "6", "7", "8"], default="6")
+            if choice == "1":
+                self.wizard_paths(console)
+            elif choice == "2":
+                self.wizard_api(console)
+            elif choice == "3":
+                self.wizard_email(console)
+            elif choice == "4":
+                self.wizard_options(console)
+            elif choice == "5":
+                self.wizard_video(console)
+            elif choice == "6":
+                self.wizard_paths(console)
+                self.wizard_api(console)
+                self.wizard_email(console)
+                self.wizard_options(console)
+                self.wizard_video(console)
+            elif choice == "7":
+                self.run_gui()
+                return
+            elif choice == "8":
+                console.print("[dim]Setup wizard closed.[/dim]\n")
+                return
+        elif section == "paths":
+            self.wizard_paths(console)
+        elif section == "ai":
+            self.wizard_api(console)
+        elif section == "email":
+            self.wizard_email(console)
+        elif section == "options":
+            self.wizard_options(console)
+        elif section == "video":
+            self.wizard_video(console)
+        else:
+            # Full wizard (default when not interactive_menu)
+            console.print("Press [green]Enter[/green] to keep current value.\n")
+            self.wizard_paths(console)
+            self.wizard_api(console)
+            self.wizard_email(console)
+            self.wizard_options(console)
+            self.wizard_video(console)
 
         console.print(f"\n[bold green]✅ Configuration successfully saved to:[/bold green] [yellow]{self.config_path}[/yellow]\n")
 
