@@ -12,6 +12,15 @@ When standard regex and parsing algorithms fail to identify heavily obfuscated f
 
 ### 1. Installation
 
+#### Option A: Standalone Executable (Recommended — No Python Required)
+Download the self-contained binary for your operating system directly from [GitHub Releases](https://github.com/ugoteuliere/rename/releases/latest):
+
+* **Windows**: Download `media-organizer-windows-x64.exe` (or `.zip`) $\rightarrow$ double-click to configure, or run from PowerShell / CMD.
+* **Linux**: Download `media-organizer-linux-x64` $\rightarrow$ make executable (`chmod +x media-organizer-linux-x64`) $\rightarrow$ run `./media-organizer-linux-x64`.
+* **macOS**: Download `media-organizer-macos-x64` $\rightarrow$ make executable (`chmod +x media-organizer-macos-x64`) $\rightarrow$ run `./media-organizer-macos-x64`.
+
+#### Option B: From Source (Python 3.10+)
+
 ```bash
 git clone https://github.com/ugoteuliere/rename.git
 cd rename
@@ -24,17 +33,17 @@ Configure storage folders, API keys, and options using either the graphical inte
 
 ```bash
 # Launch Graphical Configuration Tool (GUI)
-python main.py configure --gui
+media-organizer --gui          # (or: python main.py --gui)
 
 # Launch Terminal Setup Wizard
-python main.py configure
+media-organizer configure      # (or: python main.py configure)
 ```
 
 ### 3. Run
 
 ```bash
 # Process incoming downloads (standard local regex + TMDB)
-python main.py
+media-organizer                # (or: python main.py)
 ```
 
 ---

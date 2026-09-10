@@ -5,6 +5,10 @@ __pycache__/
 tests/__pycache__/
 .pytest_cache/
 
+# PyInstaller build artifacts
+build/
+dist/
+
 # Testing & Coverage
 .coverage
 .coverage.*

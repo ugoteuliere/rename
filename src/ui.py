@@ -72,6 +72,8 @@ def parse_arguments():
     )
 
     modes_group = parser.add_argument_group("Operational Modes")
+    modes_group.add_argument("-g", "--gui", action="store_true",
+                             help="Launch modern graphical configuration interface (GUI).")
     modes_group.add_argument("-r", "--only-rename", "--only_rename", action="store_true", dest="only_rename",
                              help="Renames files in place without moving them to Movie/TV Show folders.")
     modes_group.add_argument("-s", "--simulate", action="store_true",

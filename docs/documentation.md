@@ -6,37 +6,180 @@ Technical guide and reference for the Media Organizer & Renamer.
 
 ## Table of Contents
 
-1. [Folder Structure & Plex Standards](#1-folder-structure--plex-standards)
-2. [Configuration](#2-configuration)
+1. [Installation & Standalone Executables](#1-installation--standalone-executables)
+   - [Binary Downloads](#binary-downloads)
+   - [Windows Installation](#windows-installation)
+   - [Linux Installation](#linux-installation)
+   - [macOS Installation & Gatekeeper](#macos-installation--gatekeeper)
+   - [Zero-Python Usage](#zero-python-usage)
+   - [Building from Source (PyInstaller)](#building-from-source-pyinstaller)
+   - [Continuous Integration & Release Matrix](#continuous-integration--release-matrix)
+2. [Folder Structure & Plex Standards](#2-folder-structure--plex-standards)
+3. [Configuration](#3-configuration)
    - [Graphical Configuration Tool (GUI)](#graphical-configuration-tool-gui)
    - [Terminal Setup Wizard](#terminal-setup-wizard)
    - [Command-Line Configuration (Inspect & Update)](#command-line-configuration-inspect--update)
    - [Environment Variables](#environment-variables)
    - [Configuration File Schema](#configuration-file-schema)
-3. [Operational Modes](#3-operational-modes)
+4. [Operational Modes](#4-operational-modes)
    - [Default: Rename & Move](#default-rename--move)
    - [Rename Only (In-Place)](#rename-only-in-place)
    - [Simulation Mode (Dry-Run)](#simulation-mode-dry-run)
    - [Autonomous Background Watcher](#autonomous-background-watcher)
-4. [Options & CLI Flags](#4-options--cli-flags)
-5. [Matching & Multi-Cloud AI Architecture](#5-matching--multi-cloud-ai-architecture)
+5. [Options & CLI Flags](#5-options--cli-flags)
+6. [Matching & Multi-Cloud AI Architecture](#6-matching--multi-cloud-ai-architecture)
    - [Metadata Extraction Pipeline](#metadata-extraction-pipeline)
    - [TMDB Match Probability Scorer](#tmdb-match-probability-scorer)
    - [Batch Processing & Failover](#batch-processing--failover)
-6. [Provider Setup Guides & Free Quotas](#6-provider-setup-guides--free-quotas)
+7. [Provider Setup Guides & Free Quotas](#7-provider-setup-guides--free-quotas)
    - [The Movie Database (TMDB)](#the-movie-database-tmdb)
    - [Google Gemini](#google-gemini)
    - [Groq Cloud](#groq-cloud)
    - [OpenRouter](#openrouter)
    - [Cloudflare Workers AI](#cloudflare-workers-ai)
-7. [Keyword & Tag Management](#7-keyword--tag-management)
-8. [Email Alerts & System Setup](#8-email-alerts--system-setup)
+8. [Keyword & Tag Management](#8-keyword--tag-management)
+9. [Email Alerts & System Setup](#9-email-alerts--system-setup)
    - [Gmail SMTP Setup](#gmail-smtp-setup)
    - [FFmpeg / ffprobe Setup](#ffmpeg--ffprobe-setup)
 
 ---
 
-## 1. Folder Structure & Plex Standards
+## 1. Installation & Standalone Executables
+
+Media Organizer & Renamer is packaged as a zero-dependency standalone binary for Windows, Linux, and macOS. These pre-compiled releases include an embedded Python runtime, CustomTkinter assets, and all required packages—no Python environment or external package installation is required.
+
+### Binary Downloads
+
+Download the binary matching your platform from the [GitHub Releases](https://github.com/ugoteuliere/rename/releases/latest) page:
+
+| Operating System | Architecture | Artifact Name | Format |
+| :--- | :--- | :--- | :--- |
+| **Windows** | x86_64 / x64 | `media-organizer-windows-x64.exe` | Standalone executable or `.zip` |
+| **Linux** | x86_64 / x64 | `media-organizer-linux-x64` | Executable binary or `.tar.gz` |
+| **macOS** | Apple Silicon / Intel | `media-organizer-macos-arm64` / `x64` | Mach-O executable or `.tar.gz` |
+
+---
+
+### Windows Installation
+
+1. **Download**: Obtain `media-organizer-windows-x64.exe` (or unpack `media-organizer-windows-x64.zip`).
+2. **Placement**: Place the executable in a dedicated folder, such as `C:\Program Files\MediaOrganizer\` or `C:\Users\<Username>\bin\`.
+3. **Add to PATH (Optional)**:
+   - Search for **Environment Variables** in the Windows Start menu.
+   - Under *User variables*, select `Path` -> click **Edit** -> click **New** -> enter the folder path containing `media-organizer-windows-x64.exe` (or rename to `media-organizer.exe`).
+   - Click **OK**. You can now execute `media-organizer` from any Command Prompt or PowerShell terminal.
+4. **SmartScreen Notice**: Because the binary is compiled via GitHub Actions without an enterprise code-signing certificate, Windows SmartScreen may display an unrecognized app warning on first launch. Click **More info** -> **Run anyway**.
+5. **Launch**:
+   ```powershell
+   # Open the modern graphical configurator
+   .\media-organizer.exe --gui
+
+   # Or run the interactive terminal wizard
+   .\media-organizer.exe configure
+
+   # Process downloads folder
+   .\media-organizer.exe
+   ```
+
+---
+
+### Linux Installation
+
+1. **Download**:
+   ```bash
+   curl -LO https://github.com/ugoteuliere/rename/releases/latest/download/media-organizer-linux-x64
+   ```
+2. **Make Executable**:
+   ```bash
+   chmod +x media-organizer-linux-x64
+   ```
+3. **Install System-Wide (Optional)**:
+   ```bash
+   sudo mv media-organizer-linux-x64 /usr/local/bin/media-organizer
+   ```
+4. **GUI Display Requirement**:
+   - The CLI and terminal setup wizard operate natively in headless terminal and SSH sessions.
+   - Launching `--gui` requires an active desktop display server (X11 or Wayland).
+
+---
+
+### macOS Installation & Gatekeeper
+
+1. **Download**: Download the release binary for macOS from GitHub Releases.
+2. **Make Executable**:
+   ```bash
+   chmod +x media-organizer-macos-*
+   ```
+3. **Install to PATH (Optional)**:
+   ```bash
+   sudo mv media-organizer-macos-* /usr/local/bin/media-organizer
+   ```
+4. **macOS Gatekeeper**:
+   - macOS quarantines files downloaded via web browsers. If macOS prompts that `"media-organizer cannot be opened because the developer cannot be verified"`:
+     ```zsh
+     xattr -d com.apple.quarantine /usr/local/bin/media-organizer
+     ```
+   - Alternatively, open **System Settings** -> **Privacy & Security** -> scroll down and click **Open Anyway**.
+
+---
+
+### Zero-Python Usage
+
+Once the binary is installed, all CLI commands, arguments, and operational flags function identically to `python main.py`:
+
+```bash
+# Launch modern dark-mode GUI
+media-organizer --gui
+
+# Inspect and update configurations
+media-organizer config --list
+media-organizer config --set paths.movies_folder "/path/to/movies"
+
+# Perform dry-run preview simulation
+media-organizer --simulate
+
+# Run autonomous background watcher daemon
+media-organizer --autonomous
+```
+
+---
+
+### Building from Source (PyInstaller)
+
+To compile your own standalone binaries locally:
+
+1. Clone repository and install dependencies:
+   ```bash
+   git clone https://github.com/ugoteuliere/rename.git
+   cd rename
+   pip install -r requirements.txt
+   ```
+2. Run PyInstaller using the included specification:
+   ```bash
+   pyinstaller media-organizer.spec --noconfirm
+   ```
+3. The standalone binary is generated in `dist/`:
+   - Windows: `dist/media-organizer.exe`
+   - Linux / macOS: `dist/media-organizer`
+
+---
+
+### Continuous Integration & Release Matrix
+
+The repository implements industry-standard multi-platform CI/CD:
+1. **Multi-Platform CI (`.github/workflows/github-ci.yml`)**:
+   - Triggers on push to `main`, `dev`, and pull requests.
+   - Matrix runs across `windows-latest`, `ubuntu-latest`, and `macos-latest`.
+   - Executes unit/integration test suites with coverage, compiles the standalone binary with PyInstaller on each OS, and executes smoke tests (`--help` and `config --list`) to verify runtime stability across all 3 platforms.
+2. **Automated Releases (`.github/workflows/release.yml`)**:
+   - Triggers automatically upon pushing a semantic version tag (e.g. `v1.2.0`).
+   - Compiles native binaries on Windows, Linux, and macOS in parallel.
+   - Calculates cryptographic SHA256 checksums (`SHA256SUMS.txt`).
+   - Publishes a GitHub Release with attached `.zip`, `.tar.gz`, and standalone binaries.
+
+---
+
+## 2. Folder Structure & Plex Standards
 
 The application operates on three directories:
 * **Downloads folder** (`paths.not_sorted_media_files_folder`): incoming, unsorted media files.
@@ -52,15 +195,15 @@ Processed files follow official Plex naming conventions:
 
 ---
 
-## 2. Configuration
+## 3. Configuration
 
 ### Graphical Configuration Tool (GUI)
-Launch the graphical settings window using Python's built-in `tkinter` interface (requires no extra packages):
+Launch the modern dark-themed graphical settings window (powered by CustomTkinter):
 
 ```bash
-python main.py configure --gui
-# or
-python main.py config --gui
+media-organizer --gui
+# or with python:
+python main.py --gui
 ```
 
 Features:
@@ -193,7 +336,7 @@ mail_pswd = your_16_char_app_password
 
 ---
 
-## 3. Operational Modes
+## 4. Operational Modes
 
 ### Default: Rename & Move
 Scans incoming downloads, queries TMDB, prompts for user confirmation, renames files, and moves them to destination folders.
@@ -239,7 +382,7 @@ Autonomous mode automatically enables `-b` (`bypass`) and `-l` (`log`), skips in
 
 ---
 
-## 4. Options & CLI Flags
+## 5. Options & CLI Flags
 
 | Flag | Long Option | Config Key | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
@@ -262,7 +405,7 @@ Autonomous mode automatically enables `-b` (`bypass`) and `-l` (`log`), skips in
 
 ---
 
-## 5. Matching & Multi-Cloud AI Architecture
+## 6. Matching & Multi-Cloud AI Architecture
 
 ```
 Raw Filename 
@@ -306,7 +449,7 @@ $$P = 0.50 \cdot \text{SequenceSimilarity} + 0.35 \cdot \text{TokenOverlap} + 0.
 
 ---
 
-## 6. Provider Setup Guides & Free Quotas
+## 7. Provider Setup Guides & Free Quotas
 
 ### The Movie Database (TMDB)
 Core metadata provider for official titles, years, and season numbers.
@@ -378,7 +521,7 @@ Core metadata provider for official titles, years, and season numbers.
 
 ---
 
-## 7. Keyword & Tag Management
+## 8. Keyword & Tag Management
 
 The cleaning engine uses a 3-tier dictionary to strip release tags:
 1. **Shipped Scene Tags (`data/tags.json`)**: Default scene tags, audio formats, codecs, and languages.
@@ -392,7 +535,7 @@ The cleaning engine uses a 3-tier dictionary to strip release tags:
 
 ---
 
-## 8. Email Alerts & System Setup
+## 9. Email Alerts & System Setup
 
 ### Gmail SMTP Setup
 1. Enable **2-Step Verification** on your [Google Account](https://myaccount.google.com/security).

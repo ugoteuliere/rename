@@ -1,0 +1,124 @@
+name: Build and Release Standalone Executables
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Binary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build Standalone Executable with PyInstaller
+        run: |
+          pyinstaller media-organizer.spec --noconfirm
+
+      - name: Test Executable (${{ matrix.os }})
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            echo "Smoke testing Windows binary..."
+            ./dist/media-organizer.exe --help
+            ./dist/media-organizer.exe config --list
+          else
+            echo "Smoke testing Unix binary..."
+            chmod +x ./dist/media-organizer
+            ./dist/media-organizer --help
+            ./dist/media-organizer config --list
+          fi
+
+      - name: Package Windows Artifacts
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Move-Item -Path "dist/media-organizer.exe" -Destination "dist/media-organizer-windows-x64.exe"
+          Compress-Archive -Path "dist/media-organizer-windows-x64.exe" -DestinationPath "dist/media-organizer-windows-x64.zip"
+
+      - name: Package Linux Artifacts
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          mv dist/media-organizer dist/media-organizer-linux-x64
+          tar -czvf dist/media-organizer-linux-x64.tar.gz -C dist media-organizer-linux-x64
+
+      - name: Package macOS Artifacts
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "x86_64" ]; then
+            ARCH_NAME="x64"
+          else
+            ARCH_NAME="$ARCH"
+          fi
+          mv dist/media-organizer dist/media-organizer-macos-${ARCH_NAME}
+          tar -czvf dist/media-organizer-macos-${ARCH_NAME}.tar.gz -C dist media-organizer-macos-${ARCH_NAME}
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.tar.gz
+            dist/media-organizer-linux-*
+            dist/media-organizer-macos-*
+          if-no-files-found: error
+          retention-days: 2
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate Checksums
+        shell: bash
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          echo "Generated SHA256 checksums:"
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            release-assets/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false

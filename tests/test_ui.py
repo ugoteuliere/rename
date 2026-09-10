@@ -24,6 +24,15 @@ def test_parse_arguments_default(monkeypatch):
     assert args.verbose is False
     assert ui.SIMULATE_ENABLED is False
 
+def test_parse_arguments_gui(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["main.py", "-g"])
+    args = ui.parse_arguments()
+    assert args.gui is True
+
+    monkeypatch.setattr(sys, "argv", ["main.py", "--gui"])
+    args = ui.parse_arguments()
+    assert args.gui is True
+
 def test_parse_arguments_simulate(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["main.py", "-s"])
     args = ui.parse_arguments()

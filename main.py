@@ -144,7 +144,12 @@ def main():
         # verify environment
         args = ui.parse_arguments()
         
-        # handle config subcommands
+        # handle gui flag or config subcommands
+        if getattr(args, "gui", False) is True:
+            from src.config import config
+            config.run_gui()
+            return 0
+
         if getattr(args, "subcommand", None) in ("config", "configure"):
             ui.handle_config_command(args)
             return 0

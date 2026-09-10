@@ -157,6 +157,14 @@ def test_main_dunder_main(monkeypatch):
         runpy.run_path("main.py", run_name="__main__")
 
 
+def test_main_with_gui_flag(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["main.py", "--gui"])
+    with patch("src.config.config.run_gui", return_value=True) as mock_run_gui:
+        import main
+        assert main.main() == 0
+        mock_run_gui.assert_called_once()
+
+
 # =========================================================================
 # 2. Tests for src/api.py (Gemini response parsing & error handling)
 # =========================================================================
