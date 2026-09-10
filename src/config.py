@@ -1,9 +1,11 @@
+from __future__ import annotations
 import os
 import sys
 import shutil
 import tempfile
 import configparser
 from pathlib import Path
+from typing import Optional, Any, Dict, List
 
 class ConfigManager:
     SCHEMA = {
