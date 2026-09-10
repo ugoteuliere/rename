@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import shutil
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -515,6 +516,11 @@ def test_integration_resolution_and_quality_tags(media_env, monkeypatch):
     def mock_tmdb(name, year, language, media_type):
         return [True, "Dune Part Two", "2024", "movie"]
 
+    real_which = shutil.which
+    monkeypatch.setattr(
+        "shutil.which",
+        lambda cmd: "/usr/bin/ffprobe" if "ffprobe" in cmd else real_which(cmd)
+    )
     monkeypatch.setattr("src.api.api_call", mock_tmdb)
     monkeypatch.setattr(sys, "argv", ["main.py", "-R", "-q", "-b"])
 
