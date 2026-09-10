@@ -2,14 +2,11 @@
 
 [![CI](https://github.com/ugoteuliere/rename/actions/workflows/ci.yml/badge.svg)](https://github.com/ugoteuliere/rename/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ugoteuliere/rename?color=blue)](https://github.com/ugoteuliere/rename/releases)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A command-line and graphical tool that parses video filenames, retrieves official titles via **The Movie Database (TMDB)**, and organizes files into Movie and TV Show directories according to **Plex naming conventions**.
+A CLI tool that parses video filenames, retrieves official titles via **The Movie Database (TMDB)**, and organizes files into Movie and TV Show directories according to **Plex naming conventions**.
 
 When standard regex and parsing algorithms fail to identify heavily obfuscated filenames, the tool optionally falls back to Cloud AI providers (**Google Gemini**, **Groq Cloud**, **OpenRouter**, or **Cloudflare Workers AI**).
-
----
 
 ## Quick Start
 
@@ -36,20 +33,18 @@ Configure storage folders, API keys, and options using either the graphical inte
 
 ```bash
 # Launch Graphical Configuration Tool (GUI)
-media-organizer --gui          # (or: python main.py --gui)
+media-organizer --gui
 
-# Launch Terminal Setup Wizard
-media-organizer configure      # (or: python main.py configure)
+# Launch Terminal Wizard
+media-organizer configure
 ```
 
 ### 3. Run
 
 ```bash
-# Process incoming downloads (standard local regex + TMDB)
-media-organizer                # (or: python main.py)
+# Rename and sort media files
+media-organizer
 ```
-
----
 
 ## Operational Modes
 
@@ -62,8 +57,6 @@ media-organizer                # (or: python main.py)
 | `python main.py -i` | **Cloud AI Fallback** | Uses Cloud AI models to resolve obfuscated filenames when local parsing fails. |
 | `python main.py -L` | **Keyword Learning** | Discovers missing release tags via AI and saves them to `gemini_tags.json`. |
 | `python main.py --path="<dir>"` | **Custom Target** | Overrides incoming download folder, or targets a specific folder with `-r`. |
-
----
 
 ## Options Cheat Sheet
 
@@ -84,32 +77,6 @@ media-organizer                # (or: python main.py)
 | — | `--notify-success` | `options.notify_on_success` | Sends an email notification on successful processing. |
 | — | `--notify-error` | `options.notify_on_error` | Sends an email notification when an error occurs. |
 | `-t` | `--notify-tag` | `options.notify_on_tag` | Sends an email notification when a new keyword tag is learned. |
-
----
-
-## Configuration Commands
-
-```bash
-# Open graphical settings window
-python main.py configure --gui
-
-# Interactive terminal wizard (menu-driven)
-python main.py configure
-
-# Direct configuration shortcuts
-python main.py configure --paths     # Configure library folders
-python main.py configure --ai        # Configure API keys and AI providers
-python main.py configure --email     # Configure email alerts
-python main.py configure --options   # Configure automation defaults
-
-# Inspect or set individual keys via CLI
-python main.py config --list
-python main.py config --get paths.movies_folder
-python main.py config --set paths.movies_folder "D:/Media/Movies"
-python main.py config --set api.tmdb_api_key "your_tmdb_key"
-```
-
----
 
 ## Documentation
 
