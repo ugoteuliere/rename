@@ -73,7 +73,9 @@ def is_quota_or_rate_limit_error(exception: Exception) -> bool:
     quota_indicators = [
         "429", "rate limit", "ratelimit", "resource_exhausted",
         "quota", "tokens consumed", "tokens exceeded", "too many requests",
-        "insufficient_quota", "exhausted"
+        "insufficient_quota", "exhausted", "free-models-per-day",
+        "unavailable for free", "model is unavailable", "credits to unlock",
+        "credit balance"
     ]
     return any(ind in err_str for ind in quota_indicators)
 
@@ -230,7 +232,11 @@ def call_openrouter_batch(media_items: list[dict]) -> BatchMediaResponse:
         "HTTP-Referer": "https://github.com/ugoteuliere/rename",
         "X-Title": "Rename Media Parser"
     }
-    models = ["liquid/lfm-2.5-2.6b:free", "google/gemma-4-26b-a4b-it:free", "meta-llama/llama-3.3-70b-instruct:free"]
+    models = [
+        "liquid/lfm-2.5-2.6b:free",
+        "nex-agi/nex-n2.5-mini:free",
+        "nvidia/nemotron-3.5-lightning:free"
+    ]
     last_err = None
     for model in models:
         payload = {

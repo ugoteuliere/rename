@@ -71,6 +71,8 @@ def test_is_quota_or_rate_limit_error():
     assert api.is_quota_or_rate_limit_error(Exception("RESOURCE_EXHAUSTED: quota exceeded")) is True
     assert api.is_quota_or_rate_limit_error(Exception("insufficient_quota")) is True
     assert api.is_quota_or_rate_limit_error(Exception("all tokens consumed for today")) is True
+    assert api.is_quota_or_rate_limit_error(Exception("This model is unavailable for free.")) is True
+    assert api.is_quota_or_rate_limit_error(Exception("Rate limit exceeded: free-models-per-day")) is True
     assert api.is_quota_or_rate_limit_error(Exception("Connection timed out")) is False
 
 

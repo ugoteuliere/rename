@@ -62,8 +62,16 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run Tests and Generate Coverage
+      shell: bash
       run: |
-        pytest --cov=src --cov-report=xml
+        if [ "$RUNNER_OS" = "Linux" ]; then
+          if ! command -v xvfb-run &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y xvfb
+          fi
+          xvfb-run -a pytest --cov=src --cov-report=xml
+        else
+          pytest --cov=src --cov-report=xml
+        fi
 
     # upload coverage file when os is ubuntu
     - name: Upload coverage artifact
