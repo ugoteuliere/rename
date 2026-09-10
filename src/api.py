@@ -24,7 +24,7 @@ class ParsedMediaItem(BaseModel):
     file_id: int
     title: Optional[str] = None
     year: Optional[str] = None
-    original_language: str = "en"
+    original_language: Optional[str] = "en"
     missing_tags: List[str] = Field(default_factory=list)
     confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
 
@@ -180,23 +180,27 @@ def call_groq_batch(media_items: list[dict]) -> BatchMediaResponse:
         "Authorization": f"Bearer {gr_key}",
         "Content-Type": "application/json"
     }
-    payload = {
-        "model": "llama-3.3-70b-versatile",
-        "messages": [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": user_content}
-        ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.1
-    }
-    resp = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=30)
-    if resp.status_code != 200:
-        raise RuntimeError(f"Groq API error (status {resp.status_code}): {resp.text}")
+    models = ["openai/gpt-oss-20b", "llama-3.3-70b-versatile", "openai/gpt-oss-120b"]
+    last_err = None
+    for model in models:
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_content}
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.1
+        }
+        resp = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=30)
+        if resp.status_code == 200:
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            parsed_json = json.loads(content)
+            return BatchMediaResponse.model_validate(parsed_json)
+        last_err = f"Groq API error (status {resp.status_code}): {resp.text}"
 
-    data = resp.json()
-    content = data["choices"][0]["message"]["content"]
-    parsed_json = json.loads(content)
-    return BatchMediaResponse.model_validate(parsed_json)
+    raise RuntimeError(last_err)
 
 
 def call_openrouter_batch(media_items: list[dict]) -> BatchMediaResponse:
@@ -213,23 +217,27 @@ def call_openrouter_batch(media_items: list[dict]) -> BatchMediaResponse:
         "HTTP-Referer": "https://github.com/ugoteuliere/rename",
         "X-Title": "Rename Media Parser"
     }
-    payload = {
-        "model": "meta-llama/llama-3.3-70b-instruct:free",
-        "messages": [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": user_content}
-        ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.1
-    }
-    resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
-    if resp.status_code != 200:
-        raise RuntimeError(f"OpenRouter API error (status {resp.status_code}): {resp.text}")
+    models = ["liquid/lfm-2.5-2.6b:free", "google/gemma-4-26b-a4b-it:free", "meta-llama/llama-3.3-70b-instruct:free"]
+    last_err = None
+    for model in models:
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_content}
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.1
+        }
+        resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
+        if resp.status_code == 200:
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            parsed_json = json.loads(content)
+            return BatchMediaResponse.model_validate(parsed_json)
+        last_err = f"OpenRouter API error (status {resp.status_code}): {resp.text}"
 
-    data = resp.json()
-    content = data["choices"][0]["message"]["content"]
-    parsed_json = json.loads(content)
-    return BatchMediaResponse.model_validate(parsed_json)
+    raise RuntimeError(last_err)
 
 
 def call_cloudflare_batch(media_items: list[dict]) -> BatchMediaResponse:
@@ -407,10 +415,16 @@ def api_call(name, year, language, media_type):
 
 
 def gemini_api_call(media_info):
-    gemini_key = globals().get("GEMINI_API_KEY") or getattr(config, 'GEMINI_API_KEY', None)
-    available_providers = get_available_providers()
+    chosen_provider = getattr(config, "AI_PROVIDER", "auto")
+    if chosen_provider in ("groq", "openrouter", "cloudflare"):
+        res = execute_ai_batch_with_failover([media_info])
+        if res:
+            return res[0]
+        return [False, None, None, None, None]
 
-    if gemini_key is None and not available_providers:
+    gemini_key = globals().get("GEMINI_API_KEY") or getattr(config, 'GEMINI_API_KEY', None)
+
+    if gemini_key is None:
         print_log(
             "❌ Missing configuration: Gemini API key is not configured.\n"
             "The Gemini API key is required for AI fallback parsing of obfuscated filenames.\n\n"
@@ -424,14 +438,6 @@ def gemini_api_call(media_info):
             "Stopping program."
         )
         sys.exit(1)
-
-    # If another provider is explicitly chosen or Gemini is not available but others are:
-    chosen_provider = getattr(config, "AI_PROVIDER", "auto")
-    if chosen_provider in ("groq", "openrouter", "cloudflare") or (not gemini_key and available_providers):
-        res = execute_ai_batch_with_failover([media_info])
-        if res:
-            return res[0]
-        return [False, None, None, None, None]
 
     prompt = f"""You are an elite Media Metadata Extraction API. Your task is to act as a fallback parser to analyze highly obfuscated media filenames when standard regex cleaning algorithms fail.
 
