@@ -1,6 +1,6 @@
 # Media Organizer & Renamer
 
-[![CI](https://github.com/ugoteuliere/rename/actions/workflows/ci.yml/badge.svg)](https://github.com/ugoteuliere/rename/actions/workflows/ci.yml)
+[![CI](https://github.com/ugoteuliere/rename/actions/workflows/github-ci.yml/badge.svg)](https://github.com/ugoteuliere/rename/actions/workflows/github-ci.yml)
 [![Release](https://img.shields.io/github/v/release/ugoteuliere/rename?color=blue)](https://github.com/ugoteuliere/rename/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
