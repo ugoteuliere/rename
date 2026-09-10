@@ -350,6 +350,30 @@ def test_logging_functions(tmp_path, monkeypatch):
         ui.rich_print_log("rich log enabled message")
         mock_pl.assert_called()
 
+def test_get_log_dir(tmp_path, monkeypatch):
+    # Non-frozen
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    log_dir = ui.get_log_dir()
+    assert log_dir.name == "log"
+
+    # Frozen normal
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    log_dir_frozen = ui.get_log_dir()
+    assert log_dir_frozen == tmp_path / "log"
+
+    # Frozen permission error fallback
+    orig_mkdir = Path.mkdir
+    def mock_mkdir(self, *args, **kwargs):
+        if self == tmp_path / "log":
+            raise PermissionError("Access denied")
+        return orig_mkdir(self, *args, **kwargs)
+    
+    monkeypatch.setattr(Path, "mkdir", mock_mkdir)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "bin" / "app.exe"))
+    log_dir_fallback = ui.get_log_dir()
+    assert log_dir_fallback == tmp_path / "bin" / "log"
+
 def test_print_error():
     # Verbose False
     ui.VERBOSE_ENABLED = False

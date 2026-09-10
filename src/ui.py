@@ -348,18 +348,31 @@ def display_config_table(show_secrets=False):
     if not show_secrets:
         rich_print_log("🔒 Secrets masked. Use [cyan]--show-secrets[/cyan] to reveal.\n")
 
+def get_log_dir() -> Path:
+    """Resolve the log directory: current working directory when frozen, otherwise project root."""
+    if getattr(sys, "frozen", False):
+        try:
+            cwd_log = Path.cwd() / "log"
+            cwd_log.mkdir(parents=True, exist_ok=True)
+            return cwd_log
+        except (PermissionError, OSError):
+            exe_log = Path(sys.executable).resolve().parent / "log"
+            exe_log.mkdir(parents=True, exist_ok=True)
+            return exe_log
+    log_dir = Path(__file__).resolve().parent.parent / "log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
+
 def print_log(message):
     if LOG_ENABLED:
-        log_dir = Path(__file__).resolve().parent.parent / "log"
-        os.makedirs(log_dir, exist_ok=True) 
+        log_dir = get_log_dir()
         today = datetime.now().strftime("%Y-%m-%d")
         path = log_dir / f"{today}.txt"
 
         hour = datetime.now().strftime("%H:%M:%S")
         with open(path, "a", encoding="utf-8") as f:
             f.write(f"[{hour}] {str(message)}\n")
-    else:
-        print(message)
+    print(message)
 
 def print_error(message, logs):
     if VERBOSE_ENABLED:
