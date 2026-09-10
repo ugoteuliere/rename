@@ -73,9 +73,9 @@ jobs:
           pytest --cov=src --cov-report=xml
         fi
 
-    # upload coverage file when os is ubuntu
+    # upload coverage file when os is ubuntu / linux
     - name: Upload coverage artifact
-      if: matrix.os == 'ubuntu-latest' 
+      if: runner.os == 'Linux'
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
