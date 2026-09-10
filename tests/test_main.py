@@ -1076,6 +1076,45 @@ def test_verify_folders(tmp_path, monkeypatch):
         utils.verify_folders()
     assert exc.value.code == 1
 
+def test_verify_folders_only_rename(tmp_path, monkeypatch):
+    dl = tmp_path / "Downloads"
+    dl.mkdir()
+    m = tmp_path / "Movies"
+    m.mkdir()
+    tv = tmp_path / "TV"
+    tv.mkdir()
+
+    # When only_rename=True, only NOT_SORTED_MEDIA_FILES_FOLDER is needed
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", None)
+    monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", None)
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", str(dl))
+    assert utils.verify_folders(only_rename=True) == 0
+
+    # If NOT_SORTED_MEDIA_FILES_FOLDER is missing and only_rename=True, exit 1
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", None)
+    with pytest.raises(SystemExit) as exc:
+        utils.verify_folders(only_rename=True)
+    assert exc.value.code == 1
+
+    # Standalone custom_path with only_rename=True requires no folders configured
+    assert utils.verify_folders(only_rename=True, custom_path=str(dl)) == 0
+
+    # Custom_path without only_rename (rename and move) requires MOVIES_FOLDER and TV_SHOWS_FOLDER
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", str(m))
+    monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", str(tv))
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", None)
+    assert utils.verify_folders(only_rename=False, custom_path=str(dl)) == 0
+
+    # If MOVIES_FOLDER is missing when moving from custom_path, exit 1
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", None)
+    with pytest.raises(SystemExit) as exc:
+        utils.verify_folders(only_rename=False, custom_path=str(dl))
+    assert exc.value.code == 1
+
+def test_search_media_files_no_folder_configured(monkeypatch):
+    monkeypatch.setattr(files, "NOT_SORTED_MEDIA_FILES_FOLDER", None)
+    assert files.search_media_files(None) is None
+
 
 # ===================================================================
 # ADDITIONAL TESTS: FILES MODULE
@@ -1187,12 +1226,6 @@ def test_parse_arguments_conflicts(monkeypatch):
 
 
 def test_parse_arguments_missing_keys(monkeypatch):
-    monkeypatch.setattr(ui, "MAIL", None)
-    monkeypatch.setattr(ui, "MAIL_PSWD", None)
-    monkeypatch.setattr(sys, "argv", ["main.py", "-e"])
-    with pytest.raises(SystemExit):
-        ui.parse_arguments()
-
     monkeypatch.setattr(ui, "GEMINI_API_KEY", None)
     monkeypatch.setattr(sys, "argv", ["main.py", "-i"])
     with pytest.raises(SystemExit):
@@ -1200,11 +1233,11 @@ def test_parse_arguments_missing_keys(monkeypatch):
 
 
 def test_user_confirmation(monkeypatch):
-    monkeypatch.setattr(ui, "AUTO_ENABLED", True)
-    # With AUTO_ENABLED=True, it should return immediately without waiting for input
+    monkeypatch.setattr(ui, "BYPASS_ENABLED", True)
+    # With BYPASS_ENABLED=True, it should return immediately without waiting for input
     ui.user_confirmation("test action")
 
-    monkeypatch.setattr(ui, "AUTO_ENABLED", False)
+    monkeypatch.setattr(ui, "BYPASS_ENABLED", False)
     with patch('builtins.input', side_effect=KeyboardInterrupt):
         with pytest.raises(SystemExit) as exc:
             ui.user_confirmation("cancelled action")
@@ -1782,8 +1815,9 @@ def test_config_wizard_mocked(tmp_path, monkeypatch):
         "wizard_gemini_key",    # gemini
         "wizard@gmail.com",     # email
         "app_password_16ch",    # email password
+        "15",                   # polling interval
     ]):
-        with patch("rich.prompt.Confirm.ask", side_effect=[True, False]): # resolution=True, quality=False
+        with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, False, False, False, True, True, False]): # bypass, autonomous, ai, log, verbose, notify_success, notify_error, res, qual
             cm.run_wizard()
 
     assert cm.get("paths.movies_folder") == "D:/WizardMovies"
@@ -1793,6 +1827,15 @@ def test_config_wizard_mocked(tmp_path, monkeypatch):
     assert cm.get("api.gemini_api_key") == "wizard_gemini_key"
     assert cm.get("mail.mail") == "wizard@gmail.com"
     assert cm.get("mail.mail_pswd") == "app_password_16ch"
+    assert cm.get("options.notify_on_success") is False
+    assert cm.get("options.notify_on_error") is True
+    assert cm.get("options.bypass") is False
+    assert cm.get("options.autonomous") is False
+    assert cm.get("options.polling_interval") == "15"
+    assert cm.POLLING_INTERVAL == 15
+    assert cm.get("options.ai") is False
+    assert cm.get("options.log") is False
+    assert cm.get("options.verbose") is False
     assert cm.get("options.resolution") is True
     assert cm.get("options.quality") is False
 
@@ -1869,4 +1912,107 @@ def test_actionable_error_messages(tmp_path, monkeypatch, capsys):
         assert "api.gemini_api_key" in logged
         assert "configure" in logged
 
-
+
+def test_config_validation_messages(tmp_path, monkeypatch):
+    import main
+    test_ini = tmp_path / "val_config.ini"
+    cm = ConfigManager(custom_path=str(test_ini))
+
+    # Test wizard validation messages for non-existent folder and missing ffprobe
+    with patch("shutil.which", return_value=None):
+        with patch("rich.console.Console.print") as mock_console:
+            with patch("rich.prompt.Prompt.ask", side_effect=[
+                str(tmp_path / "non_existent_movies"),
+                str(tmp_path / "non_existent_tv"),
+                str(tmp_path / "non_existent_dl"),
+                "tmdb", "gemini", "mail", "pass",
+                "15"
+            ]):
+                with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, False, False, False, True, True, True]):
+                    cm.run_wizard()
+
+            printed = " ".join([str(call[0][0]) for call in mock_console.call_args_list if call[0]])
+            assert "The directory" in printed
+            assert "does not exist on disk or is not reachable" in printed
+            assert "'ffprobe' (FFmpeg) was not found in your System PATH" in printed
+
+    # Test CLI --set validation messages
+    with patch("shutil.which", return_value=None):
+        with patch("src.ui.rich_print_log") as mock_log:
+            monkeypatch.setattr(sys, "argv", ["main.py", "config", "--set", "paths.movies_folder", str(tmp_path / "ghost_folder")])
+            assert main.main() == 0
+            log_str = " ".join([str(call[0][0]) for call in mock_log.call_args_list if call[0]])
+            assert "does not exist on disk or is not reachable" in log_str
+
+        with patch("src.ui.rich_print_log") as mock_log:
+            monkeypatch.setattr(sys, "argv", ["main.py", "config", "--set", "options.resolution", "true"])
+            assert main.main() == 0
+            log_str = " ".join([str(call[0][0]) for call in mock_log.call_args_list if call[0]])
+            assert "'ffprobe' (FFmpeg) is not installed or not in System PATH" in log_str
+
+
+def test_main_path_standalone_with_unset_folders(tmp_path, monkeypatch):
+    import main
+    from src import utils, files
+    custom_dir = tmp_path / "incoming_custom"
+    custom_dir.mkdir()
+    f = custom_dir / "Inception.2010.mkv"
+    f.touch()
+
+    # All folder settings in config / utils are completely None
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", None)
+    monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", None)
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", None)
+    monkeypatch.setattr(files, "MOVIES_FOLDER", None)
+    monkeypatch.setattr(files, "TV_SHOWS_FOLDER", None)
+    monkeypatch.setattr(files, "NOT_SORTED_MEDIA_FILES_FOLDER", None)
+
+    # Mock TMDB API call to return a valid movie
+    with patch("src.api.api_call", return_value=(True, "Inception", "2010", "en")), \
+         patch("src.ui.user_confirmation", return_value=True):
+        # 1. Run simulation mode on custom path with -r (standalone)
+        monkeypatch.setattr(sys, "argv", ["main.py", "-s", "-r", f"--path={custom_dir}"])
+        assert main.main() == 0
+        assert f.exists()
+
+        # 2. Run execution mode on custom path with -r (standalone)
+        monkeypatch.setattr(sys, "argv", ["main.py", "-r", f"--path={custom_dir}"])
+        assert main.main() == 0
+        renamed_file = custom_dir / "Inception (2010).mkv"
+        assert renamed_file.exists()
+
+
+def test_main_path_rename_and_move_overriding_downloads(tmp_path, monkeypatch):
+    import main
+    from src import utils, files
+    custom_dir = tmp_path / "incoming_custom"
+    custom_dir.mkdir()
+    f = custom_dir / "Inception.2010.mkv"
+    f.touch()
+
+    movies_dir = tmp_path / "Movies"
+    movies_dir.mkdir()
+    tv_dir = tmp_path / "TV"
+    tv_dir.mkdir()
+
+    # Download folder is None, but Movies and TV are set
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", str(movies_dir))
+    monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", str(tv_dir))
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", None)
+    monkeypatch.setattr(files, "MOVIES_FOLDER", str(movies_dir))
+    monkeypatch.setattr(files, "TV_SHOWS_FOLDER", str(tv_dir))
+    monkeypatch.setattr(files, "NOT_SORTED_MEDIA_FILES_FOLDER", None)
+
+    with patch("src.api.api_call", return_value=(True, "Inception", "2010", "en")), \
+         patch("src.ui.user_confirmation", return_value=True):
+        # Simulation of rename & move with --path
+        monkeypatch.setattr(sys, "argv", ["main.py", "--simulate", f"--path={custom_dir}"])
+        assert main.main() == 0
+        assert f.exists()
+
+        # Execution of rename & move with --path
+        monkeypatch.setattr(sys, "argv", ["main.py", f"--path={custom_dir}"])
+        assert main.main() == 0
+        moved_file = movies_dir / "Inception (2010).mkv"
+        assert moved_file.exists()
+        assert not f.exists()

@@ -16,12 +16,37 @@ QUALITY = getattr(config, 'QUALITY', False)
 
 DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "data.py"
 
-def verify_folders():
-    required_folders = [
-        ("paths.movies_folder", MOVIES_FOLDER, "MOVIES_FOLDER", "Movies folder"),
-        ("paths.tv_shows_folder", TV_SHOWS_FOLDER, "TV_SHOWS_FOLDER", "TV Shows folder"),
-        ("paths.not_sorted_media_files_folder", NOT_SORTED_MEDIA_FILES_FOLDER, "NOT_SORTED_MEDIA_FILES_FOLDER", "Unsorted downloads folder"),
-    ]
+def verify_folders(only_rename=False, custom_path=None, autonomous=False):
+    if custom_path and only_rename and not autonomous:
+        return 0
+
+    def _get_folder(attr_name):
+        val = globals().get(attr_name)
+        if val is None or str(val).strip() == "":
+            val = getattr(config, attr_name, None)
+        return val
+
+    if autonomous:
+        required_folders = [
+            ("paths.movies_folder", _get_folder("MOVIES_FOLDER"), "MOVIES_FOLDER", "Movies folder"),
+            ("paths.tv_shows_folder", _get_folder("TV_SHOWS_FOLDER"), "TV_SHOWS_FOLDER", "TV Shows folder"),
+            ("paths.not_sorted_media_files_folder", _get_folder("NOT_SORTED_MEDIA_FILES_FOLDER"), "NOT_SORTED_MEDIA_FILES_FOLDER", "Unsorted downloads folder"),
+        ]
+    elif custom_path:
+        required_folders = [
+            ("paths.movies_folder", _get_folder("MOVIES_FOLDER"), "MOVIES_FOLDER", "Movies folder"),
+            ("paths.tv_shows_folder", _get_folder("TV_SHOWS_FOLDER"), "TV_SHOWS_FOLDER", "TV Shows folder"),
+        ]
+    elif only_rename:
+        required_folders = [
+            ("paths.not_sorted_media_files_folder", _get_folder("NOT_SORTED_MEDIA_FILES_FOLDER"), "NOT_SORTED_MEDIA_FILES_FOLDER", "Unsorted downloads folder"),
+        ]
+    else:
+        required_folders = [
+            ("paths.movies_folder", _get_folder("MOVIES_FOLDER"), "MOVIES_FOLDER", "Movies folder"),
+            ("paths.tv_shows_folder", _get_folder("TV_SHOWS_FOLDER"), "TV_SHOWS_FOLDER", "TV Shows folder"),
+            ("paths.not_sorted_media_files_folder", _get_folder("NOT_SORTED_MEDIA_FILES_FOLDER"), "NOT_SORTED_MEDIA_FILES_FOLDER", "Unsorted downloads folder"),
+        ]
     
     unconfigured = []
     for key_path, val, attr, label in required_folders:
@@ -29,20 +54,64 @@ def verify_folders():
             unconfigured.append(f"  • {label} ({key_path} / {attr})")
 
     if unconfigured:
-        msg = (
-            "❌ Missing configuration:\n"
-            "The following required folder paths are not configured:\n"
-            + "\n".join(unconfigured) + "\n\n"
-            "💡 How to fix:\n"
-            "  1. Run the interactive setup wizard:\n"
-            "     python main.py configure\n"
-            "  2. Or set individual values via CLI:\n"
-            "     python main.py config --set paths.movies_folder \"path/to/movies\"\n"
-            "     python main.py config --set paths.tv_shows_folder \"path/to/tv_shows\"\n"
-            "     python main.py config --set paths.not_sorted_media_files_folder \"path/to/downloads\"\n"
-            "  3. Or use environment variables (e.g. RENAME_MOVIES_FOLDER)\n\n"
-            "Stopping program."
-        )
+        if autonomous:
+            msg = (
+                "❌ Missing configuration:\n"
+                "Autonomous mode requires all library and download folders to be configured:\n"
+                + "\n".join(unconfigured) + "\n\n"
+                "💡 How to fix:\n"
+                "  1. Run the interactive setup wizard:\n"
+                "     python main.py configure\n"
+                "  2. Or set individual values via CLI:\n"
+                "     python main.py config --set paths.movies_folder \"path/to/movies\"\n"
+                "     python main.py config --set paths.tv_shows_folder \"path/to/tv_shows\"\n"
+                "     python main.py config --set paths.not_sorted_media_files_folder \"path/to/downloads\"\n\n"
+                "Stopping program."
+            )
+        elif custom_path:
+            msg = (
+                "❌ Missing configuration:\n"
+                "Moving renamed files requires the destination library folders to be configured:\n"
+                + "\n".join(unconfigured) + "\n\n"
+                "💡 How to fix:\n"
+                "  1. Run the interactive setup wizard:\n"
+                "     python main.py configure\n"
+                "  2. Or set library paths via CLI:\n"
+                "     python main.py config --set paths.movies_folder \"path/to/movies\"\n"
+                "     python main.py config --set paths.tv_shows_folder \"path/to/tv_shows\"\n"
+                "  3. Or rename files in-place without moving them (standalone):\n"
+                f"     python main.py -r --path=\"{custom_path}\"\n\n"
+                "Stopping program."
+            )
+        elif only_rename:
+            msg = (
+                "❌ Missing configuration:\n"
+                "The following required folder path is not configured:\n"
+                + "\n".join(unconfigured) + "\n\n"
+                "💡 How to fix:\n"
+                "  1. Run the interactive setup wizard:\n"
+                "     python main.py configure\n"
+                "  2. Or specify a folder directly with --path:\n"
+                "     python main.py -r --path \"path/to/folder\"\n"
+                "  3. Or set the downloads folder via CLI:\n"
+                "     python main.py config --set paths.not_sorted_media_files_folder \"path/to/downloads\"\n\n"
+                "Stopping program."
+            )
+        else:
+            msg = (
+                "❌ Missing configuration:\n"
+                "The following required folder paths are not configured:\n"
+                + "\n".join(unconfigured) + "\n\n"
+                "💡 How to fix:\n"
+                "  1. Run the interactive setup wizard:\n"
+                "     python main.py configure\n"
+                "  2. Or set individual values via CLI:\n"
+                "     python main.py config --set paths.movies_folder \"path/to/movies\"\n"
+                "     python main.py config --set paths.tv_shows_folder \"path/to/tv_shows\"\n"
+                "     python main.py config --set paths.not_sorted_media_files_folder \"path/to/downloads\"\n"
+                "  3. Or use environment variables (e.g. RENAME_MOVIES_FOLDER)\n\n"
+                "Stopping program."
+            )
         ui.print_log(msg)
         sys.exit(1)
 
@@ -270,7 +339,7 @@ def correct_movie_filename(file):
                 f"⤷ Error logs: {e}\n"
             )
         
-        mail.send_email(error_message)
+        mail.send_error_email(error_message=error_message, affected_file=failed_file, exception=e)
 
         if ui.VERBOSE_ENABLED:  
             ui.print_log(error_message)
@@ -315,7 +384,7 @@ def correct_tv_show_filename(file):
                 f"⤷ Error logs: {e}\n"
             )
         
-        mail.send_email(error_message)
+        mail.send_error_email(error_message=error_message, affected_file=failed_file, exception=e)
 
         if ui.VERBOSE_ENABLED:  
             ui.print_log(error_message)
