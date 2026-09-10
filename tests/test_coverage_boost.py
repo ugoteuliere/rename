@@ -227,6 +227,18 @@ def test_gemini_api_call_json_decode_error(monkeypatch):
         mock_err.assert_called_once()
 
 
+def test_gemini_api_call_exception():
+    media_info = {'File': "test.mkv", 'Folder': "test", 'Path': "/test", 'Clean': "test", 'Parse': None, 'Media': "movie"}
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = Exception("API connection dropped")
+
+    with patch("google.genai.Client", return_value=mock_client), \
+         patch("src.api.print_error") as mock_err, \
+         pytest.raises(RuntimeError):
+        api.gemini_api_call(media_info)
+        mock_err.assert_called_once()
+
+
 # =========================================================================
 # 3. Tests for src/config.py (paths resolution and properties)
 # =========================================================================

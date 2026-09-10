@@ -6,6 +6,7 @@ from google import genai
 from src.mail import send_email
 from src.ui import print_log, print_error, VERBOSE_ENABLED
 from data.data import TAGS
+from src.tags import tag_manager
 
 from src.config import config
 TMDB_API_KEY = getattr(config, 'TMDB_API_KEY', None)
@@ -148,7 +149,7 @@ def gemini_api_call(media_info):
             missing_tags = data.get('missing_tags') or []
             
             if missing_tags:
-                #add_new_tags(missing_tags) # On appelle la nouvelle fonction
+                tag_manager.add_gemini_tags(missing_tags)
                 message = f"Gemini API was called to rename the media file: {title}.\n    The following tag(s) was(were) added: {missing_tags}."
                 send_email(message)
                 print_log(f" ⚠️  Found new missing tags: {missing_tags}")

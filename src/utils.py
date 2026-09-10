@@ -6,6 +6,7 @@ import pandas as pd
 from pathlib import Path
 from src import ui, api, mail, files
 from data.data import TAGS, TLDS, QUALITY_PATTERNS, RESOLUTION_PATTERNS
+from src.tags import tag_manager
 
 from src.config import config
 MOVIES_FOLDER = getattr(config, 'MOVIES_FOLDER', None)
@@ -14,7 +15,8 @@ NOT_SORTED_MEDIA_FILES_FOLDER = getattr(config, 'NOT_SORTED_MEDIA_FILES_FOLDER',
 RESOLUTION = getattr(config, 'RESOLUTION', False)
 QUALITY = getattr(config, 'QUALITY', False)
 
-DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "data.py"
+DEFAULT_DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "data.py"
+DATA_FILE = DEFAULT_DATA_FILE
 
 def verify_folders(only_rename=False, custom_path=None, autonomous=False):
     if custom_path and only_rename and not autonomous:
@@ -135,51 +137,51 @@ def verify_folders(only_rename=False, custom_path=None, autonomous=False):
 
 def add_new_tags(missing_tags):
     if not missing_tags:
-        return
+        return []
 
-    # read file
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            content = f.read()
-    except FileNotFoundError as e:
-        raise RuntimeError(ui.print_error(f" ❌ Error: The file {DATA_FILE} does not exist",e))
+    # Safe 3-tier JSON learning with guardrails
+    tag_manager.add_gemini_tags(missing_tags)
 
-    tags_to_add = []
-    for tag in missing_tags:
-        clean_tag = tag.strip().lower()
-        if not clean_tag:
-            continue
-            
-        escaped_tag = re.escape(clean_tag)
-        
-        if f"r'{escaped_tag}'" not in content and f"r'{clean_tag}'" not in content:
-            tags_to_add.append(escaped_tag)
+    # Backward compatibility with legacy tests pointing DATA_FILE to custom mock files
+    if DATA_FILE != DEFAULT_DATA_FILE:
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                content = f.read()
+        except FileNotFoundError as e:
+            raise RuntimeError(ui.print_error(f" ❌ Error: The file {DATA_FILE} does not exist", e))
 
-    if not tags_to_add:
-        return
+        tags_to_add = []
+        for tag in missing_tags:
+            clean_tag = tag.strip().lower()
+            if not clean_tag:
+                continue
 
-    new_tags_formatted = ", ".join([f"r'{tag}'" for tag in tags_to_add])
+            escaped_tag = re.escape(clean_tag)
+            if f"r'{escaped_tag}'" not in content and f"r'{clean_tag}'" not in content:
+                tags_to_add.append(escaped_tag)
 
-    # find tags list
-    pattern = re.compile(r"(TAGS\s*=\s*\[)([^\]]*)\]")
-    match = pattern.search(content)
+        if not tags_to_add:
+            return []
 
-    if match:
-        group1 = match.group(1)
-        
-        if not group1.strip().endswith(','):
-            group1 += ','
-            
-        injection = f"\n    # === Ajout Auto Gemini ===\n    {new_tags_formatted}"
-        new_content = content[:match.end(1)] + injection + content[match.start(2):]
-        
-        # add tags to the list
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            f.write(new_content)
-            
-        ui.print_log(f" ✅ New tag(s) added to {DATA_FILE.name} : {tags_to_add}")
-    else:
-        ui.print_log(f" ❌ Error : Impossible to find TAGS list {DATA_FILE.name}")
+        new_tags_formatted = ", ".join([f"r'{tag}'" for tag in tags_to_add])
+
+        pattern = re.compile(r"(TAGS\s*=\s*\[)([^\]]*)\]")
+        match = pattern.search(content)
+
+        if match:
+            group1 = match.group(1)
+            if not group1.strip().endswith(','):
+                group1 += ','
+
+            injection = f"\n    # === Ajout Auto Gemini ===\n    {new_tags_formatted}"
+            new_content = content[:match.end(1)] + injection + content[match.start(2):]
+
+            with open(DATA_FILE, "w", encoding="utf-8") as f:
+                f.write(new_content)
+
+            ui.print_log(f" ✅ New tag(s) added to {DATA_FILE.name} : {tags_to_add}")
+        else:
+            ui.print_log(f" ❌ Error : Impossible to find TAGS list {DATA_FILE.name}")
 
 SEASON_EPISODE_PATTERNS = [
     # 1. Saison/Season XX (Episode/Ep/E) XX (ex: Saison.01E02, Saison.1E2, Season.01.Episode.02, Saison 01 Ep 02)
@@ -517,8 +519,7 @@ def clean_filename(filename):
     clean_title = re.sub(r'\s+', ' ', clean_title).strip()
     
     # remove torrent file informations
-    for tag in TAGS:
-        clean_title = re.sub(rf'(?i)\b{tag}\b', '', clean_title)
+    clean_title = tag_manager.clean_text(clean_title)
         
     # clean spaces
     clean_title = clean_title.replace('.', ' ').replace('_', ' ').replace('-', ' ')

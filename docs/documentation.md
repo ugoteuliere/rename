@@ -207,3 +207,19 @@ FFmpeg (specifically `ffprobe`) is **only** required if you activate video resol
   ```
 
 *(Note: Restart your terminal or IDE after installation so that `ffprobe` is available in your System PATH).*
+
+---
+
+## 🏷️ Custom & Learned Keywords (Tag Management)
+
+The application uses an isolated 3-tier system to strip release tags (codecs, resolutions, release groups) from filenames before querying metadata APIs:
+
+1. **Core Defaults (`data/tags.json`)**: Shipped with the repository and maintained in source control. Contains standard scene tags, audio formats, and languages.
+2. **User Custom Tags (`custom_tags.json`)**: Located in your configuration directory (alongside `config.ini`). You can add custom tracker tags or private release groups here without modifying repository files:
+   ```json
+   {
+     "tags": ["my_private_tracker", "custom_group"]
+   }
+   ```
+3. **Gemini Learned Tags (`gemini_tags.json`)**: When the Gemini AI fallback analyzes an obfuscated file and discovers a missing release tag, it validates it against strict guardrails (minimum length $\ge 3$, stopword blacklist, alphanumeric format) and safely appends it to `gemini_tags.json` in your configuration folder.
+

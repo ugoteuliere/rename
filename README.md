@@ -51,6 +51,7 @@ python main.py -r --path="path/to/folder"
 - **Gemini AI Fallback**: Employs Google's Gemini AI to identify cryptic or obfuscated filenames when standard matching fails.
 - **Resolution & Quality Tagging**: Inspects video streams to append resolution (e.g. `[1080p]`, `[4K]`) and quality tags (e.g. `[FullHD BluRay]`).
 - **Email Notifications**: Receive automated email reports on successful file processing or when errors occur (ideal for server cron jobs).
+- **3-Tier Keyword Tag Engine**: High-performance single-pass regex tag cleaning with core defaults, user personal custom keywords, and safe AI learning with stopword guardrails.
 - **Interactive Setup Wizard**: Easily configure your folders, API credentials, and persistent defaults with built-in best practice tips.
 
 ## 📖 Documentation
