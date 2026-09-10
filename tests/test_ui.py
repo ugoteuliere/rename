@@ -466,3 +466,64 @@ def test_user_confirmation():
     with patch("builtins.input", side_effect=KeyboardInterrupt):
         with pytest.raises(SystemExit):
             ui.user_confirmation("test action")
+
+
+def test_is_double_clicked(monkeypatch):
+    # Non-win32
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(sys, "argv", ["main.py"])
+    assert ui.is_double_clicked() is False
+
+    # Win32 with multiple arguments
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "argv", ["main.py", "-r"])
+    assert ui.is_double_clicked() is False
+
+    # Win32 single process (double clicked from Explorer)
+    monkeypatch.setattr(sys, "argv", ["main.py"])
+    fake_kernel32 = MagicMock()
+    fake_kernel32.GetConsoleProcessList.return_value = 1
+    fake_windll = MagicMock(kernel32=fake_kernel32)
+    fake_ctypes = MagicMock(windll=fake_windll)
+    with patch.dict("sys.modules", {"ctypes": fake_ctypes}):
+        assert ui.is_double_clicked() is True
+
+    # Win32 multiple processes in console (e.g. run from terminal)
+    fake_kernel32.GetConsoleProcessList.return_value = 2
+    with patch.dict("sys.modules", {"ctypes": fake_ctypes}):
+        assert ui.is_double_clicked() is False
+
+    # Win32 exception handling
+    fake_kernel32.GetConsoleProcessList.side_effect = RuntimeError("Console error")
+    with patch.dict("sys.modules", {"ctypes": fake_ctypes}):
+        assert ui.is_double_clicked() is False
+
+
+def test_hide_console_window(monkeypatch):
+    # Non-win32
+    monkeypatch.setattr(sys, "platform", "linux")
+    ui.hide_console_window()
+
+    # Win32 with valid console window handle
+    monkeypatch.setattr(sys, "platform", "win32")
+    fake_kernel32 = MagicMock()
+    fake_kernel32.GetConsoleWindow.return_value = 12345
+    fake_user32 = MagicMock()
+    fake_windll = MagicMock(kernel32=fake_kernel32, user32=fake_user32)
+    fake_ctypes = MagicMock(windll=fake_windll)
+    with patch.dict("sys.modules", {"ctypes": fake_ctypes}):
+        ui.hide_console_window()
+        fake_user32.ShowWindow.assert_called_once_with(12345, 0)
+
+    # Win32 with no console window handle
+    fake_kernel32.GetConsoleWindow.return_value = 0
+    fake_user32.reset_mock()
+    with patch.dict("sys.modules", {"ctypes": fake_ctypes}):
+        ui.hide_console_window()
+        fake_user32.ShowWindow.assert_not_called()
+
+    # Win32 with exception
+    fake_kernel32.GetConsoleWindow.side_effect = RuntimeError("Failed")
+    with patch.dict("sys.modules", {"ctypes": fake_ctypes}):
+        ui.hide_console_window()  # Should not raise
+

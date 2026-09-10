@@ -38,6 +38,32 @@ NOTIFY_TAG_ENABLED = False
 AUTONOMOUS_ENABLED = False
 POLLING_INTERVAL = 15
 
+
+def is_double_clicked() -> bool:
+    """Detects if application was launched by double-clicking in Windows Explorer (single process attached to console)."""
+    if sys.platform == "win32" and len(sys.argv) == 1:
+        try:
+            import ctypes
+            pids = (ctypes.c_uint * 2)()
+            count = ctypes.windll.kernel32.GetConsoleProcessList(pids, 2)
+            return count <= 1
+        except Exception:
+            return False
+    return False
+
+
+def hide_console_window() -> None:
+    """Hides the host console window on Windows when launching the graphical interface."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if hwnd:
+                ctypes.windll.user32.ShowWindow(hwnd, 0)
+        except Exception:
+            pass
+
+
 def parse_arguments():
     global LOG_ENABLED, MAIL_ENABLED, AI_FALLBACK_ENABLED, LEARN_ENABLED, BYPASS_ENABLED, VERBOSE_ENABLED, SIMULATE_ENABLED
     global RESOLUTION_ENABLED, QUALITY_ENABLED, NOTIFY_SUCCESS_ENABLED, NOTIFY_ERROR_ENABLED, NOTIFY_TAG_ENABLED

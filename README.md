@@ -16,7 +16,7 @@ When standard regex and parsing algorithms fail to identify heavily obfuscated f
 Download the self-contained binary for your operating system directly from [GitHub Releases](https://github.com/ugoteuliere/rename/releases/latest):
 
 * **Windows**: Download `media-organizer-windows-x64.exe` (or `.zip`) $\rightarrow$ double-click to configure, or run from PowerShell / CMD.
-* **Linux**: Download `media-organizer-linux-x64` $\rightarrow$ make executable (`chmod +x media-organizer-linux-x64`) $\rightarrow$ run `./media-organizer-linux-x64`.
+* **Linux / TrueNAS**: Download `media-organizer-linux-x64` $\rightarrow$ make executable (`chmod +x media-organizer-linux-x64`) $\rightarrow$ run `./media-organizer-linux-x64`. *(Built with glibc 2.35 for full Debian 12 / TrueNAS SCALE compatibility. On systems where `/tmp` is mounted `noexec`, set `export TMPDIR=./tmp`).*
 * **macOS**: Download `media-organizer-macos-arm64` (Apple Silicon M1/M2/M3) or `media-organizer-macos-x64` (Intel) $\rightarrow$ make executable (`chmod +x media-organizer-macos-*`) $\rightarrow$ run `./media-organizer-macos-*`.
 
 #### Option B: From Source (Python 3.10+)
