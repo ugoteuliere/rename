@@ -1,5 +1,7 @@
 # 🎬 Media Organizer & Renamer
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A command-line tool that parses messy video filenames, fetches official titles via **The Movie Database (TMDB)**, and automatically organizes them into Movie and TV Show directories following **Plex naming conventions**.
 
 If a filename cannot be identified through standard parsing, the tool can optionally use Google's **Gemini API** as an AI fallback to analyze and correct it.
@@ -65,3 +67,7 @@ python main.py -L -t
 ## 📖 Documentation
 
 For the full command reference, CLI configuration commands, and setup guides, see the [Documentation](docs/documentation.md).
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
