@@ -16,16 +16,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            python-version: "3.11"
+          - os: ubuntu-22.04
+            python-version: "3.11"
+          - os: macos-latest
+            python-version: "3.11"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.14
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: |
@@ -51,21 +57,21 @@ jobs:
           fi
 
       - name: Package Windows Artifacts
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Move-Item -Path "dist/media-organizer.exe" -Destination "dist/media-organizer-windows-x64.exe"
           Compress-Archive -Path "dist/media-organizer-windows-x64.exe" -DestinationPath "dist/media-organizer-windows-x64.zip"
 
       - name: Package Linux Artifacts
-        if: matrix.os == 'ubuntu-latest'
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           mv dist/media-organizer dist/media-organizer-linux-x64
           tar -czvf dist/media-organizer-linux-x64.tar.gz -C dist media-organizer-linux-x64
 
       - name: Package macOS Artifacts
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           ARCH=$(uname -m)

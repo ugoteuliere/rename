@@ -18,17 +18,17 @@ jobs:
     name: Run Tests
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-22.04, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python 3.14
+    - name: Set up Python 3.11
       uses: actions/setup-python@v5
       with:
-        python-version: "3.14"
+        python-version: "3.11"
 
     - name: Create config.ini file
       shell: bash

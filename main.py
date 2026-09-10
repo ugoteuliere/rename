@@ -144,8 +144,16 @@ def main():
         # Parse command line arguments and options
         args = ui.parse_arguments()
         
+        # Check if launched by double-clicking in Windows Explorer with no CLI arguments
+        if ui.is_double_clicked():
+            ui.hide_console_window()
+            from src.config import config
+            config.run_gui()
+            return 0
+
         # Dispatch standalone GUI launcher or CLI config commands
         if getattr(args, "gui", False) is True:
+            ui.hide_console_window()
             from src.config import config
             config.run_gui()
             return 0

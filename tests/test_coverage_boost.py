@@ -159,10 +159,24 @@ def test_main_dunder_main(monkeypatch):
 
 def test_main_with_gui_flag(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["main.py", "--gui"])
-    with patch("src.config.config.run_gui", return_value=True) as mock_run_gui:
+    with patch("src.config.config.run_gui", return_value=True) as mock_run_gui, \
+         patch("src.ui.hide_console_window") as mock_hide:
         import main
         assert main.main() == 0
         mock_run_gui.assert_called_once()
+        mock_hide.assert_called_once()
+
+
+def test_main_double_click_launches_gui(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["main.py"])
+    with patch("src.ui.is_double_clicked", return_value=True), \
+         patch("src.ui.hide_console_window") as mock_hide, \
+         patch("src.config.config.run_gui", return_value=True) as mock_run_gui:
+        import main
+        assert main.main() == 0
+        mock_hide.assert_called_once()
+        mock_run_gui.assert_called_once()
+
 
 
 # =========================================================================
