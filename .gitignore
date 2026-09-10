@@ -1,17 +1,35 @@
-# compiled
+# Byte-compiled / optimized / cache files
 __pycache__/
 *.py[cod]
 *$py.class
 tests/__pycache__/
 .pytest_cache/
 
-# env
+# Testing & Coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+nosetests.xml
+
+# Virtual environments
 env/
 venv/
 .env/
 .venv/
 ENV/
 
-# others
-config.py
+# Configuration files & secrets
+config.ini
+.rename.ini
+*.ini
+
+# Application logs
 log/
+*.log
+
+# IDE & Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -6,16 +6,35 @@ import shutil
 import os
 import subprocess
 import json
-from src import ui, utils
+from src import ui, utils, mail
 from data.data import QUALITY_PATTERNS, RESOLUTION_PATTERNS
 
-import config
+from src.config import config
 MOVIES_FOLDER = getattr(config, 'MOVIES_FOLDER', None)
 TV_SHOWS_FOLDER = getattr(config, 'TV_SHOWS_FOLDER', None)
 NOT_SORTED_MEDIA_FILES_FOLDER = getattr(config, 'NOT_SORTED_MEDIA_FILES_FOLDER', None)
 
-def search_media_files(path):
-    target_dir = Path(path).resolve() if path is not None else Path(NOT_SORTED_MEDIA_FILES_FOLDER)
+PARTIAL_EXTENSIONS = {'.crdownload', '.part', '.!ut', '.tmp', '.download', '.aria2'}
+
+def is_file_locked(file_path: Path) -> bool:
+    """Check if a file is currently being written to by another process (e.g. downloading)."""
+    if not file_path.is_file():
+        return False
+    try:
+        os.rename(file_path, file_path)
+        return False
+    except (PermissionError, OSError):
+        return True
+
+def search_media_files(path, exit_if_empty=True):
+    folder_val = NOT_SORTED_MEDIA_FILES_FOLDER or getattr(config, 'NOT_SORTED_MEDIA_FILES_FOLDER', None)
+    if path is not None:
+        target_dir = Path(path).resolve()
+    elif folder_val:
+        target_dir = Path(folder_val).resolve()
+    else:
+        ui.print_log("Error: No media directory specified or configured.")
+        return None
     
     # check if the directory actually exists
     if not target_dir.exists() or not target_dir.is_dir():
@@ -24,16 +43,22 @@ def search_media_files(path):
 
     video_extensions = {'.mkv', '.mp4', '.avi', '.mov', '.wmv', '.m4v'}
     movie_re = r"^.+? \(\d{4}\)(?: \[[^\]]+\])?$"
-    series_re = r"^.+?(?: \(\d{4}\))? - S\d{2}E\d{2}(?: \[[^\]]+\])?$"
+    series_re = r"^.+?(?<! \(\d{4}\)) - S\d{2}E\d{2}(?: \[[^\]]+\])?$"
     
     messy_data_table = []
     clean_data_table = []
 
     # recursively searches all folders
     for file_path in target_dir.rglob('*'):
+        if file_path.suffix.lower() in PARTIAL_EXTENSIONS:
+            continue
         
-        # filter video file type
-        if file_path.suffix in video_extensions :
+        # filter video file type (case-insensitive)
+        if file_path.suffix.lower() in video_extensions:
+            if is_file_locked(file_path):
+                ui.print_log(f"Skipping active/locked download: {file_path.name}")
+                continue
+
             # filters video that already match the format Movie title (Year) or TV Show title SXXEXX
             name_without_ext = file_path.stem.strip()
 
@@ -75,8 +100,10 @@ def search_media_files(path):
                     })
 
     if len(messy_data_table) == 0 and len(clean_data_table) == 0:
-        ui.print_log("❌ No media files found in that folder")
-        sys.exit(1)
+        if exit_if_empty:
+            ui.print_log("❌ No media files found in that folder")
+            sys.exit(1)
+        return pd.DataFrame(), pd.DataFrame()
     else:
         ui.print_log(f"\n📂 Folder scan report:\n - {len(messy_data_table)} files to rename\n - {len(clean_data_table)} files with clean filename\n")
 
@@ -174,6 +201,7 @@ def sort_media_files(clean_data_table):
 
             tv_show_name = re.sub(r'\s*(?:-\s*)?S\d+E\d+.*$', '', str(movie['Corrected']), flags=re.IGNORECASE).strip()
             tv_show_name = re.sub(r'\s*\[.*?\]', '', tv_show_name).strip()
+            tv_show_name = re.sub(r'\s*\(\d{4}\)$', '', tv_show_name).strip()
 
             folder_path = Path(TV_SHOWS_FOLDER) / tv_show_name / season_folder
             folder_path.mkdir(parents=True, exist_ok=True)
@@ -222,25 +250,68 @@ def remove_empty_folders(target_path):
             except OSError as e:
                 raise RuntimeError(ui.print_error(f" ❌ Error: An error occurred while deleting {dirpath}",e))
 
-def move_media_files(paths):
+def move_media_files(paths, clean_data_table=None, source_path=None):
     success_count = 0
     failed_moves = []
+
+    movies_dir = Path(MOVIES_FOLDER) if MOVIES_FOLDER else None
+    tv_dir = Path(TV_SHOWS_FOLDER) if TV_SHOWS_FOLDER else None
+
+    # Map destination stem back to original file name and media type if available
+    lookup = {}
+    if clean_data_table is not None and not clean_data_table.empty:
+        for _, row in clean_data_table.iterrows():
+            corr = str(row.get('Corrected', ''))
+            orig = str(row.get('File', ''))
+            media = str(row.get('Media', ''))
+            lookup[corr] = (orig, media)
 
     for old, new in paths:
         try:
             move_file(old, new)
             success_count += 1
+
+            p_old = Path(old)
+            p_new = Path(new)
+
+            orig_name, media_type = lookup.get(p_new.stem, (p_old.name, "unknown"))
+            if media_type == "unknown":
+                try:
+                    if movies_dir and p_new.resolve().is_relative_to(movies_dir.resolve()):
+                        media_type = "movie"
+                    elif tv_dir and p_new.resolve().is_relative_to(tv_dir.resolve()):
+                        media_type = "tv"
+                except Exception:
+                    pass
+
+            mail.send_media_success_email(
+                media_name=p_new.name,
+                original_name=orig_name,
+                media_type=media_type,
+                destination_path=str(p_new)
+            )
+
         except (FileExistsError, RuntimeError) as e:
-            ui.print_log(f" ⚠️ Skipping {old.name}: {e} \n")
-            failed_moves.append(old.name)
+            p_old = Path(old)
+            ui.print_log(f" ⚠️ Skipping {p_old.name}: {e} \n")
+            failed_moves.append(p_old.name)
+            try:
+                mail.send_error_email(
+                    error_message=str(e),
+                    affected_file=p_old.name
+                )
+            except Exception as mail_err:
+                ui.print_log(f"⚠️ Warning: Failed to send error email: {mail_err}")
             
-    if success_count>0 :
+    if success_count > 0:
         ui.print_log(f"\n✅ {success_count} files moved successfully!")
     
     if failed_moves:
         ui.print_log(f"❌ {len(failed_moves)} files could not be moved")
 
-    remove_empty_folders(Path(NOT_SORTED_MEDIA_FILES_FOLDER))
+    cleanup_target = Path(source_path) if source_path else (Path(NOT_SORTED_MEDIA_FILES_FOLDER) if NOT_SORTED_MEDIA_FILES_FOLDER else None)
+    if cleanup_target:
+        remove_empty_folders(cleanup_target)
 
 def get_file_quality_resolution(file_path):
     metadata = get_metadata_with_ffprobe(file_path)
@@ -304,7 +375,12 @@ def get_file_quality_resolution(file_path):
 def get_metadata_with_ffprobe(file_path):
     # Check if ffprobe is installed on the system
     if not shutil.which("ffprobe"):
-        print("❌ Error: ffprobe is not installed or not found in System PATH.")
+        ui.print_log(
+            "⚠️ Warning: ffprobe is not installed or not found in System PATH.\n"
+            "FFmpeg is only required if you activate the resolution and quality tags feature.\n"
+            "To install FFmpeg, see: docs/documentation.md#ffmpeg-setup\n"
+            "Or disable it via: python main.py config --set options.resolution false\n"
+        )
         return None
 
     cmd = [

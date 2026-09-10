@@ -1,12 +1,22 @@
 import sys
 import os
+import shutil
+
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 from rich.console import Console
 from rich.table import Table
 from datetime import datetime
 from pathlib import Path
 import argparse
 
-import config
+from src.config import config
 MOVIES_FOLDER = getattr(config, 'MOVIES_FOLDER', None)
 TV_SHOWS_FOLDER = getattr(config, 'TV_SHOWS_FOLDER', None)
 GEMINI_API_KEY = getattr(config, 'GEMINI_API_KEY', None)
@@ -16,11 +26,20 @@ MAIL_PSWD = getattr(config, 'MAIL_PSWD', None)
 LOG_ENABLED = False
 MAIL_ENABLED = False
 AI_FALLBACK_ENABLED = False
-AUTO_ENABLED = False
+BYPASS_ENABLED = False
 VERBOSE_ENABLED = False
+SIMULATE_ENABLED = False
+RESOLUTION_ENABLED = False
+QUALITY_ENABLED = False
+NOTIFY_SUCCESS_ENABLED = False
+NOTIFY_ERROR_ENABLED = False
+AUTONOMOUS_ENABLED = False
+POLLING_INTERVAL = 15
 
 def parse_arguments():
-    global LOG_ENABLED, MAIL_ENABLED, AI_FALLBACK_ENABLED, AUTO_ENABLED, VERBOSE_ENABLED
+    global LOG_ENABLED, MAIL_ENABLED, AI_FALLBACK_ENABLED, BYPASS_ENABLED, VERBOSE_ENABLED, SIMULATE_ENABLED
+    global RESOLUTION_ENABLED, QUALITY_ENABLED, NOTIFY_SUCCESS_ENABLED, NOTIFY_ERROR_ENABLED
+    global AUTONOMOUS_ENABLED, POLLING_INTERVAL
 
     description_text = (
         "🎬 Media Organizer & Renamer\n"
@@ -30,8 +49,15 @@ def parse_arguments():
     epilog_text = (
         "Examples:\n"
         "  python main.py                    (Default: Renames AND moves files)\n"
-        "  python main.py -r                 (Only renames the files)\n"
-        "  python main.py -m                 (Only moves cleanly named files)\n\n"
+        "  python main.py -r                 (Only renames the files in place)\n"
+        "  python main.py -s                 (Simulation mode: preview changes without modifying disk)\n"
+        "  python main.py -a                 (Autonomous mode: continuous background polling)\n"
+        "  python main.py -a --interval 10   (Autonomous mode with 10-minute polling)\n"
+        "  python main.py -R -q              (Appends resolution & quality tags)\n"
+        "  python main.py --notify-success   (Sends email notification on success)\n"
+        "  python main.py configure          (Interactive configuration wizard)\n"
+        "  python main.py config --list      (List all configured settings)\n"
+        "  python main.py config --set paths.movies_folder \"D:/Movies\"\n\n"
         "Documentation & Updates: https://github.com/ugoteuliere/rename"
     )
 
@@ -41,77 +67,218 @@ def parse_arguments():
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.add_argument("-m", "--only_move", action="store_true", 
-                        help="Moves already cleanly named files from the download folder into the Movie/TV Show folders.")
-    
-    parser.add_argument("-r", "--only_rename", action="store_true", 
-                        help="Renames files in the configured download folder but does not move them.")
-    
-    parser.add_argument("--path", type=str, default=None,
-                        help="Target a specific folder for the --only_rename option (e.g., -p \"path/to/custom/folder\").")
-    
-    parser.add_argument("-i", "--ai", action="store_true", 
-                        help="Enables the Gemini AI fallback to intelligently parse and correct highly obfuscated filenames.")
-    
-    parser.add_argument("-e", "--mail", action="store_true", 
-                        help="Sends an automated email notification if a critical error occurs during execution.")
-    
-    parser.add_argument("-l", "--log", action="store_true", 
-                        help="Suppresses terminal output and writes all console messages to a dedicated log file instead.")
-    
-    parser.add_argument("-a", "--auto", action="store_true", 
-                        help="Run the entire script automatically without asking for user confirmation before renaming or before moving the files.")
-    
-    parser.add_argument("-v", "--verbose", action="store_true", 
-                        help="Display error logs after the error messages.")
-    
+    modes_group = parser.add_argument_group("Operational Modes")
+    modes_group.add_argument("-r", "--only-rename", "--only_rename", action="store_true", dest="only_rename",
+                             help="Renames files in place without moving them to Movie/TV Show folders.")
+    modes_group.add_argument("-s", "--simulate", action="store_true",
+                             help="Simulates renaming and sorting without modifying any files on disk.")
+
+    proc_group = parser.add_argument_group("Processing Options")
+    proc_group.add_argument("-R", "--resolution", action="store_true",
+                            help="Detect and append video resolution tags (e.g. [1080p], [4K]).")
+    proc_group.add_argument("-q", "--quality", action="store_true",
+                            help="Detect and append video encoding/quality tags (e.g. [FullHD BluRay]).")
+    proc_group.add_argument("-i", "--ai", action="store_true", 
+                            help="Enables the Gemini AI fallback to intelligently parse and correct highly obfuscated filenames.")
+    proc_group.add_argument("--path", type=str, default=None,
+                            help="Target a specific folder as source (overrides downloads folder, or renames in-place with -r).")
+
+    auto_group = parser.add_argument_group("Automation & Logging")
+    auto_group.add_argument("-a", "--autonomous", action="store_true",
+                            help="Run continuously in autonomous mode with periodic background polling.")
+    auto_group.add_argument("--interval", type=int, default=None,
+                            help="Polling interval in minutes for autonomous mode (overrides config).")
+    auto_group.add_argument("-b", "--bypass", action="store_true", 
+                            help="Bypass user confirmation prompts before renaming or moving files.")
+    auto_group.add_argument("-l", "--log", action="store_true", 
+                            help="Suppresses terminal output and writes all console messages to a dedicated log file instead.")
+    auto_group.add_argument("-v", "--verbose", action="store_true", 
+                            help="Display detailed error logs after error messages.")
+    auto_group.add_argument("--notify-success", action="store_true",
+                            help="Send an email notification on successful media processing.")
+    auto_group.add_argument("--notify-error", action="store_true",
+                            help="Send an email notification when a processing error occurs.")
+
+    # Subparsers for config commands
+    subparsers = parser.add_subparsers(dest="subcommand")
+
+    config_parser = subparsers.add_parser(
+        "config",
+        help="View and manage configuration settings (INI file & environment variables).",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    config_parser.add_argument("-l", "--list", action="store_true", help="List all configured settings and their sources.")
+    config_parser.add_argument("--show-secrets", action="store_true", help="Display sensitive values (API keys, passwords) without masking.")
+    config_parser.add_argument("--get", metavar="KEY", help="Get the value for a specific setting (e.g. paths.movies_folder, api.tmdb_api_key).")
+    config_parser.add_argument("--set", nargs=2, metavar=("KEY", "VALUE"), help="Set a configuration setting (e.g. paths.movies_folder 'D:/Movies').")
+    config_parser.add_argument("--unset", metavar="KEY", help="Remove a configuration setting from the INI file.")
+    config_parser.add_argument("--path", action="store_true", help="Display the path of the active configuration file.")
+
+    subparsers.add_parser("configure", help="Launch interactive configuration wizard.")
+
     args = parser.parse_args()
 
-    # Conflict check: cannot move and rename explicitly at the same time
-    if args.only_move and args.only_rename:
-        parser.error(
-            "Conflict: You cannot use '--only_move' (-m) and '--only_rename' (-r) at the same time.\n"
-            "Reason: To perform both actions sequentially (which is the standard behavior), "
-            "simply run the script without either flag (e.g., `python main.py`)."
-        )
+    # If running a configuration subcommand, return immediately
+    if getattr(args, "subcommand", None) in ("config", "configure"):
+        return args
 
-    # Path check: must be used with --only_rename and must exist
+    # Path check: must exist if specified
     if args.path:
-        if not args.only_rename:
-            parser.error(
-                "Conflict: The '--path' (-p) option can only be used in conjunction with the '--only_rename' (-r) flag."
-            )
         if not os.path.isdir(args.path):
             parser.error(
                 f"Invalid path: The directory '{args.path}' does not exist or is not a valid folder."
             )
 
-    if args.log:
-        LOG_ENABLED = True
+    current_mail = MAIL or getattr(config, 'MAIL', None)
+    current_pswd = MAIL_PSWD or getattr(config, 'MAIL_PSWD', None)
+    MAIL_ENABLED = bool(current_mail and current_pswd)
 
-    if args.mail:
-        if not MAIL or not MAIL_PSWD:
+    AUTONOMOUS_ENABLED = bool(args.autonomous or (args.interval is not None) or getattr(config, 'AUTONOMOUS', False))
+    if args.interval is not None:
+        if args.interval < 1:
             parser.error(
-                "Missing configuration: The '--mail' (-e) option requires 'MAIL' and 'MAIL_PSWD' "
-                "to be set in the config.py file."
+                "Invalid interval: The '--interval' option requires a positive integer of at least 1 minute."
             )
-        MAIL_ENABLED = True
+        POLLING_INTERVAL = args.interval
+    else:
+        POLLING_INTERVAL = getattr(config, 'POLLING_INTERVAL', 15)
 
-    if args.ai:
-        if not GEMINI_API_KEY:
+    BYPASS_ENABLED = bool(args.bypass or getattr(config, 'BYPASS', False) or AUTONOMOUS_ENABLED)
+    AI_FALLBACK_ENABLED = bool(args.ai or getattr(config, 'AI', False))
+    LOG_ENABLED = bool(args.log or getattr(config, 'LOG', False) or AUTONOMOUS_ENABLED)
+    VERBOSE_ENABLED = bool(args.verbose or getattr(config, 'VERBOSE', False))
+    SIMULATE_ENABLED = bool(args.simulate)
+    RESOLUTION_ENABLED = bool(args.resolution or getattr(config, 'RESOLUTION', False))
+    QUALITY_ENABLED = bool(args.quality or getattr(config, 'QUALITY', False))
+    NOTIFY_SUCCESS_ENABLED = bool(args.notify_success)
+    NOTIFY_ERROR_ENABLED = bool(args.notify_error)
+
+    from src import utils as utils_module
+    utils_module.RESOLUTION = RESOLUTION_ENABLED
+    utils_module.QUALITY = QUALITY_ENABLED
+
+    if (args.notify_success or args.notify_error) and not MAIL_ENABLED:
+        parser.error(
+            "❌ Missing configuration: Email notification flags require 'mail' and 'mail_pswd' to be configured in [mail].\n\n"
+            "💡 How to fix:\n"
+            "  1. Run the configuration wizard:\n"
+            "     python main.py configure\n"
+            "  2. Or set credentials via CLI:\n"
+            "     python main.py config --set mail.mail \"<your_email@gmail.com>\"\n"
+            "     python main.py config --set mail.mail_pswd \"<your_16_char_app_password>\""
+        )
+
+    if (args.resolution or args.quality) and not shutil.which("ffprobe"):
+        parser.error(
+            "❌ Missing dependency: The '-R/--resolution' and '-q/--quality' options require 'ffprobe' (FFmpeg) to be installed in System PATH.\n\n"
+            "💡 How to fix:\n"
+            "  Install FFmpeg and ensure 'ffprobe' is available in your PATH.\n"
+            "  Guide: docs/documentation.md#ffmpeg-setup"
+        )
+
+    if AI_FALLBACK_ENABLED:
+        current_gemini = GEMINI_API_KEY or getattr(config, 'GEMINI_API_KEY', None)
+        if not current_gemini:
             parser.error(
-                "Missing configuration: The '--ai' (-i) option requires 'GEMINI_API_KEY' "
-                "to be set in the config.py file."
+                "❌ Missing configuration: The '--ai' (-i) option requires 'GEMINI_API_KEY' to be configured.\n\n"
+                "💡 How to fix:\n"
+                "  1. Run the configuration wizard:\n"
+                "     python main.py configure\n"
+                "  2. Or set the key via CLI:\n"
+                "     python main.py config --set api.gemini_api_key \"<your_gemini_key>\"\n"
+                "  3. Or use the environment variable:\n"
+                "     export RENAME_GEMINI_API_KEY=\"<your_gemini_key>\""
             )
-        AI_FALLBACK_ENABLED = True
 
-    if args.auto:
-        AUTO_ENABLED = True
-    
-    if args.verbose:
-        VERBOSE_ENABLED = True
-        
     return args
+
+def handle_config_command(args):
+    from src.config import config
+    
+    if getattr(args, "subcommand", None) == "configure":
+        config.run_wizard()
+        return
+
+    if getattr(args, "path", False):
+        rich_print_log(f"\n📂 Active configuration file: [green]{config.config_path}[/green]\n")
+        return
+
+    if getattr(args, "get", None):
+        key = args.get.strip()
+        val, source = config.get_with_source(key)
+        if val is None:
+            rich_print_log(f"[yellow]'{key}' is not set.[/yellow]")
+        else:
+            rich_print_log(f"[bold green]{key}[/bold green] = {val} [cyan]({source})[/cyan]")
+        return
+
+    if getattr(args, "set", None):
+        key, val = args.set
+        try:
+            val_clean = val.strip()
+            if key.startswith("paths.") and not os.path.isdir(val_clean):
+                rich_print_log(f"\n❌ [bold red]Error:[/bold red] The directory '[white]{val_clean}[/white]' does not exist on disk or is not reachable.")
+
+            if key in ("options.resolution", "options.quality"):
+                val_bool = val_clean.lower() in ("true", "1", "yes", "y", "t")
+                if val_bool and not shutil.which("ffprobe"):
+                    rich_print_log("\n❌ [bold red]Error:[/bold red] 'ffprobe' (FFmpeg) is not installed or not in System PATH.\nResolution and quality tags will fail to be detected until FFmpeg is installed.")
+
+            if key in ("options.notify_on_success", "options.notify_on_error"):
+                val_bool = val_clean.lower() in ("true", "1", "yes", "y", "t")
+                cur_mail = getattr(config, 'MAIL', None)
+                cur_pswd = getattr(config, 'MAIL_PSWD', None)
+                if val_bool and not (cur_mail and cur_pswd):
+                    rich_print_log("\n⚠️  [bold yellow]Notice:[/bold yellow] Email notifications are enabled, but Gmail credentials ('mail' and 'mail_pswd') are not yet configured in [mail].")
+
+            config.set(key, val)
+            rich_print_log(f"\n✅ Set [bold green]{key}[/bold green] = [yellow]{val}[/yellow] in [green]{config.config_path}[/green]\n")
+        except ValueError as e:
+            rich_print_log(f"\n❌ [bold red]Configuration error:[/bold red] {e}\n")
+            sys.exit(1)
+        return
+
+    if getattr(args, "unset", None):
+        key = args.unset.strip()
+        try:
+            if config.unset(key):
+                rich_print_log(f"\n✅ Unset [bold green]{key}[/bold green] from [green]{config.config_path}[/green]\n")
+            else:
+                rich_print_log(f"\n⚠️  [yellow]{key}[/yellow] was not found in [green]{config.config_path}[/green]\n")
+        except ValueError as e:
+            rich_print_log(f"\n❌ [bold red]Configuration error:[/bold red] {e}\n")
+            sys.exit(1)
+        return
+
+    # Default action for `config`: --list or display table
+    display_config_table(show_secrets=getattr(args, "show_secrets", False))
+
+def display_config_table(show_secrets=False):
+    from src.config import config
+    from rich.table import Table
+
+    items = config.list_all(show_secrets=show_secrets)
+    table = Table(title="⚙️  [bold cyan]Media Organizer & Renamer Configuration[/bold cyan]", title_justify="left")
+    table.add_column("Section", style="magenta", no_wrap=True)
+    table.add_column("Setting", style="white", no_wrap=True)
+    table.add_column("Value", style="green")
+    table.add_column("Source", style="yellow")
+
+    for item in items:
+        source_color = {
+            "ENV": "[bold cyan]ENV[/bold cyan]",
+            "INI": "[bold green]INI[/bold green]",
+            "LEGACY": "[yellow]config.py[/yellow]",
+            "DEFAULT": "[dim]DEFAULT[/dim]"
+        }.get(item["source"], item["source"])
+        
+        table.add_row(item["section"], item["key"], str(item["display_value"]), source_color)
+
+    rich_print_log()
+    rich_print_log(table)
+    rich_print_log(f"📄 Active INI file: [yellow]{config.config_path}[/yellow]")
+    if not show_secrets:
+        rich_print_log("🔒 Secrets masked. Use [cyan]--show-secrets[/cyan] to reveal.\n")
 
 def print_log(message):
     if LOG_ENABLED:
@@ -182,12 +349,14 @@ def display_corrected_filenames(clean_data_table):
         table_tv.add_column("Corrected", style="green", no_wrap=True, max_width=60, overflow="ellipsis")
 
         for _, row in tv_shows_df.iterrows():
-            if row['Original'] != row['Corrected']:
+            orig = str(row.get('Original', ''))
+            corr = str(row.get('Corrected', ''))
+            if orig != corr:
                 table_tv.add_row(
-                    str(row['Original']), 
-                    str(row['Season']), 
-                    str(row['Episode']), 
-                    str(row['Corrected'])
+                    orig,
+                    str(row.get('Season', '')),
+                    str(row.get('Episode', '')),
+                    corr
                 )
 
         rich_print_log(table_tv)
@@ -218,10 +387,6 @@ def display_sorted_files(paths):
             tv_shows_data.append((old_name, str(short_path)))
         else:
             movies_data.append((old_name, str(p_new.name)))
-
-    if not movies_data and not tv_shows_data:
-        rich_print_log("[yellow]No sorted files to display.[/yellow]")
-        return
 
     # movies
     if movies_data:
@@ -275,7 +440,7 @@ def display_skipped_filenames(failed_files):
     rich_print_log()
 
 def user_confirmation(message):
-    if not(AUTO_ENABLED):
+    if not(BYPASS_ENABLED):
         console = Console()
         try:
             console.print(f"\n➡️  Press [green][Entrer][/green] to {message}, or [red][Ctrl+C][/red] to cancel...", end="")

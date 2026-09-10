@@ -7,7 +7,7 @@ from pathlib import Path
 from src import ui, api, mail, files
 from data.data import TAGS, TLDS, QUALITY_PATTERNS, RESOLUTION_PATTERNS
 
-import config
+from src.config import config
 MOVIES_FOLDER = getattr(config, 'MOVIES_FOLDER', None)
 TV_SHOWS_FOLDER = getattr(config, 'TV_SHOWS_FOLDER', None)
 NOT_SORTED_MEDIA_FILES_FOLDER = getattr(config, 'NOT_SORTED_MEDIA_FILES_FOLDER', None)
@@ -16,21 +16,119 @@ QUALITY = getattr(config, 'QUALITY', False)
 
 DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "data.py"
 
-def verify_folders():
-    required_folders = [MOVIES_FOLDER, TV_SHOWS_FOLDER, NOT_SORTED_MEDIA_FILES_FOLDER]
-    missing_folders = []
+def verify_folders(only_rename=False, custom_path=None, autonomous=False):
+    if custom_path and only_rename and not autonomous:
+        return 0
 
-    if MOVIES_FOLDER == None or TV_SHOWS_FOLDER == None or NOT_SORTED_MEDIA_FILES_FOLDER == None:
-        ui.print_log("❌ Missing configuration: \nThe global variables MOVIES_FOLDER,TV_SHOWS_FOLDER and NOT_SORTED_MEDIA_FILES_FOLDER all need to be configured in a config.py file at the root of the script. Please refer to the following documentation: https://github.com/ugoteuliere/rename\n\n Stopping program.")
+    def _get_folder(attr_name):
+        val = globals().get(attr_name)
+        if val is None or str(val).strip() == "":
+            val = getattr(config, attr_name, None)
+        return val
+
+    if autonomous:
+        required_folders = [
+            ("paths.movies_folder", _get_folder("MOVIES_FOLDER"), "MOVIES_FOLDER", "Movies folder"),
+            ("paths.tv_shows_folder", _get_folder("TV_SHOWS_FOLDER"), "TV_SHOWS_FOLDER", "TV Shows folder"),
+            ("paths.not_sorted_media_files_folder", _get_folder("NOT_SORTED_MEDIA_FILES_FOLDER"), "NOT_SORTED_MEDIA_FILES_FOLDER", "Unsorted downloads folder"),
+        ]
+    elif custom_path:
+        required_folders = [
+            ("paths.movies_folder", _get_folder("MOVIES_FOLDER"), "MOVIES_FOLDER", "Movies folder"),
+            ("paths.tv_shows_folder", _get_folder("TV_SHOWS_FOLDER"), "TV_SHOWS_FOLDER", "TV Shows folder"),
+        ]
+    elif only_rename:
+        required_folders = [
+            ("paths.not_sorted_media_files_folder", _get_folder("NOT_SORTED_MEDIA_FILES_FOLDER"), "NOT_SORTED_MEDIA_FILES_FOLDER", "Unsorted downloads folder"),
+        ]
+    else:
+        required_folders = [
+            ("paths.movies_folder", _get_folder("MOVIES_FOLDER"), "MOVIES_FOLDER", "Movies folder"),
+            ("paths.tv_shows_folder", _get_folder("TV_SHOWS_FOLDER"), "TV_SHOWS_FOLDER", "TV Shows folder"),
+            ("paths.not_sorted_media_files_folder", _get_folder("NOT_SORTED_MEDIA_FILES_FOLDER"), "NOT_SORTED_MEDIA_FILES_FOLDER", "Unsorted downloads folder"),
+        ]
+    
+    unconfigured = []
+    for key_path, val, attr, label in required_folders:
+        if val is None or str(val).strip() == "":
+            unconfigured.append(f"  • {label} ({key_path} / {attr})")
+
+    if unconfigured:
+        if autonomous:
+            msg = (
+                "❌ Missing configuration:\n"
+                "Autonomous mode requires all library and download folders to be configured:\n"
+                + "\n".join(unconfigured) + "\n\n"
+                "💡 How to fix:\n"
+                "  1. Run the interactive setup wizard:\n"
+                "     python main.py configure\n"
+                "  2. Or set individual values via CLI:\n"
+                "     python main.py config --set paths.movies_folder \"path/to/movies\"\n"
+                "     python main.py config --set paths.tv_shows_folder \"path/to/tv_shows\"\n"
+                "     python main.py config --set paths.not_sorted_media_files_folder \"path/to/downloads\"\n\n"
+                "Stopping program."
+            )
+        elif custom_path:
+            msg = (
+                "❌ Missing configuration:\n"
+                "Moving renamed files requires the destination library folders to be configured:\n"
+                + "\n".join(unconfigured) + "\n\n"
+                "💡 How to fix:\n"
+                "  1. Run the interactive setup wizard:\n"
+                "     python main.py configure\n"
+                "  2. Or set library paths via CLI:\n"
+                "     python main.py config --set paths.movies_folder \"path/to/movies\"\n"
+                "     python main.py config --set paths.tv_shows_folder \"path/to/tv_shows\"\n"
+                "  3. Or rename files in-place without moving them (standalone):\n"
+                f"     python main.py -r --path=\"{custom_path}\"\n\n"
+                "Stopping program."
+            )
+        elif only_rename:
+            msg = (
+                "❌ Missing configuration:\n"
+                "The following required folder path is not configured:\n"
+                + "\n".join(unconfigured) + "\n\n"
+                "💡 How to fix:\n"
+                "  1. Run the interactive setup wizard:\n"
+                "     python main.py configure\n"
+                "  2. Or specify a folder directly with --path:\n"
+                "     python main.py -r --path \"path/to/folder\"\n"
+                "  3. Or set the downloads folder via CLI:\n"
+                "     python main.py config --set paths.not_sorted_media_files_folder \"path/to/downloads\"\n\n"
+                "Stopping program."
+            )
+        else:
+            msg = (
+                "❌ Missing configuration:\n"
+                "The following required folder paths are not configured:\n"
+                + "\n".join(unconfigured) + "\n\n"
+                "💡 How to fix:\n"
+                "  1. Run the interactive setup wizard:\n"
+                "     python main.py configure\n"
+                "  2. Or set individual values via CLI:\n"
+                "     python main.py config --set paths.movies_folder \"path/to/movies\"\n"
+                "     python main.py config --set paths.tv_shows_folder \"path/to/tv_shows\"\n"
+                "     python main.py config --set paths.not_sorted_media_files_folder \"path/to/downloads\"\n"
+                "  3. Or use environment variables (e.g. RENAME_MOVIES_FOLDER)\n\n"
+                "Stopping program."
+            )
+        ui.print_log(msg)
         sys.exit(1)
 
-    for folder_path in required_folders:
-        if not os.path.isdir(folder_path):
-            missing_folders.append(folder_path)
+    missing_folders = []
+    for key_path, folder_path, attr, label in required_folders:
+        if not os.path.isdir(str(folder_path)):
+            missing_folders.append(f"  • {folder_path} ({label})")
 
-    # If any folders are missing, log the error and exit
     if missing_folders:
-        ui.print_log(f"❌ Missing required folders: {', '.join(missing_folders)}.\n\n Stopping program.")
+        msg = (
+            "❌ Missing required folder(s) on disk:\n"
+            + "\n".join(missing_folders) + "\n\n"
+            "💡 Please create the directory or update your configuration:\n"
+            "   python main.py config --set <key> \"correct/path\"\n\n"
+            "Stopping program."
+        )
+        ui.print_log(msg)
         sys.exit(1)
 
     return 0
@@ -241,7 +339,7 @@ def correct_movie_filename(file):
                 f"⤷ Error logs: {e}\n"
             )
         
-        mail.send_email(error_message)
+        mail.send_error_email(error_message=error_message, affected_file=failed_file, exception=e)
 
         if ui.VERBOSE_ENABLED:  
             ui.print_log(error_message)
@@ -258,27 +356,25 @@ def correct_tv_show_filename(file):
 
     try :
         name             = file['Parse'][0]
-        year             = file['Parse'][1]
 
         season,episode = parse_season_episode(file['Parse'][2],file['Parse'][3],file['File'])
         season,episode = format_season_and_episode(season,episode)
         resolution,quality = parse_resolution_quality(file['Parse'][4],file['Parse'][5],file['Clean'][2],file['Clean'][3],file['Path'])
         
-        success, title, _, original_language = api.api_call(name, year, "en-US", "tv")
+        success, title, _, original_language = api.api_call(name, None, "en-US", "tv")
         if not success:
             name             = file['Clean'][0]
-            year             = file['Clean'][1]
             
-            success, title, _, original_language = api.api_call(name, year, "en-US", "tv")
+            success, title, _, original_language = api.api_call(name, None, "en-US", "tv")
             if not success and ui.AI_FALLBACK_ENABLED:
                 success, title, _, _, _ = api.gemini_api_call(file)
             
         if success and original_language in ["fr", "fr-FR"]:
-            success_fr, title_fr, _, _ = api.api_call(name, year, "fr-FR", "tv")
+            success_fr, title_fr, _, _ = api.api_call(name, None, "fr-FR", "tv")
             if success_fr:
                 title = title_fr
 
-        new_filename = generate_new_tvshow_filename(success,title,year,season,episode,resolution,quality)
+        new_filename = generate_new_tvshow_filename(success,title,season,episode,resolution,quality)
     
     except Exception as e:
         failed_file = file.get('File', 'Unknown File')
@@ -288,7 +384,7 @@ def correct_tv_show_filename(file):
                 f"⤷ Error logs: {e}\n"
             )
         
-        mail.send_email(error_message)
+        mail.send_error_email(error_message=error_message, affected_file=failed_file, exception=e)
 
         if ui.VERBOSE_ENABLED:  
             ui.print_log(error_message)
@@ -320,17 +416,15 @@ def generate_new_movie_filename(success, title, year, resolution, quality):
 
     return new_name
 
-def generate_new_tvshow_filename(success, title, year, season, episode, resolution, quality):
+def generate_new_tvshow_filename(success, title, season, episode, resolution=None, quality=None):
     is_title_valid = title and str(title).strip()
-    is_season_valid = season and str(season).strip()
-    is_episode_valid = episode and str(episode).strip()
+    is_season_valid = season is not None and str(season).strip() != ""
+    is_episode_valid = episode is not None and str(episode).strip() != ""
 
     if not success or not is_title_valid or not is_season_valid or not is_episode_valid:
         raise LookupError("API calls failed or essential metadata (Title, Season, or Episode) is missing/empty.")
 
     new_name = title.replace(':', ' -')
-    if year and str(year).strip():
-        new_name += f" ({year})"
 
     # season and episode
     s_padded = str(season).zfill(2)
