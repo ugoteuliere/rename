@@ -1831,9 +1831,14 @@ def test_config_wizard_mocked(tmp_path, monkeypatch):
         "D:/WizardDownloads",   # downloads
         "wizard_tmdb_key",      # tmdb
         "wizard_gemini_key",    # gemini
+        "wizard_groq_key",      # groq
+        "wizard_openrouter_key",# openrouter
+        "wizard_cf_token",      # cf token
+        "wizard_cf_acc",        # cf acc
         "wizard@gmail.com",     # email
         "app_password_16ch",    # email password
         "15",                   # polling interval
+        "groq",                 # ai provider
     ]):
         with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, True, False, False, False, True, True, True, False]): # bypass, autonomous, ai, learn, log, verbose, notify_success, notify_error, notify_tag, res, qual
             cm.run_wizard()
@@ -1843,6 +1848,11 @@ def test_config_wizard_mocked(tmp_path, monkeypatch):
     assert cm.get("paths.not_sorted_media_files_folder") == "D:/WizardDownloads"
     assert cm.get("api.tmdb_api_key") == "wizard_tmdb_key"
     assert cm.get("api.gemini_api_key") == "wizard_gemini_key"
+    assert cm.get("api.groq_api_key") == "wizard_groq_key"
+    assert cm.get("api.openrouter_api_key") == "wizard_openrouter_key"
+    assert cm.get("api.cloudflare_api_token") == "wizard_cf_token"
+    assert cm.get("api.cloudflare_account_id") == "wizard_cf_acc"
+    assert cm.get("options.ai_provider") == "groq"
     assert cm.get("mail.mail") == "wizard@gmail.com"
     assert cm.get("mail.mail_pswd") == "app_password_16ch"
     assert cm.get("options.notify_on_success") is False
@@ -1947,8 +1957,9 @@ def test_config_validation_messages(tmp_path, monkeypatch):
                 str(tmp_path / "non_existent_movies"),
                 str(tmp_path / "non_existent_tv"),
                 str(tmp_path / "non_existent_dl"),
-                "tmdb", "gemini", "mail", "pass",
-                "15"
+                "tmdb", "gemini", "", "", "", "", "mail", "pass",
+                "15",
+                "auto"
             ]):
                 with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, False, False, False, False, True, False, True, True]):
                     cm.run_wizard()

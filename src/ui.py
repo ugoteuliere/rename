@@ -86,6 +86,8 @@ def parse_arguments():
                             help="Enables the Gemini AI fallback to intelligently parse and correct highly obfuscated filenames.")
     proc_group.add_argument("-L", "--learn", action="store_true",
                             help="Enable AI keyword learning to discover and save missing tags from Gemini.")
+    proc_group.add_argument("--provider", choices=["auto", "gemini", "groq", "openrouter", "cloudflare"], default=None,
+                            help="Specify the AI cloud provider to use for fallback parsing (auto, gemini, groq, openrouter, cloudflare).")
     proc_group.add_argument("--path", type=str, default=None,
                             help="Target a specific folder as source (overrides downloads folder, or renames in-place with -r).")
 
@@ -186,18 +188,43 @@ def parse_arguments():
             "  Guide: docs/documentation.md#ffmpeg-setup"
         )
 
+    if getattr(args, "provider", None):
+        config.AI_PROVIDER = args.provider
+
     if AI_FALLBACK_ENABLED:
+        available_ai = []
         current_gemini = GEMINI_API_KEY or getattr(config, 'GEMINI_API_KEY', None)
-        if not current_gemini:
+        current_groq = getattr(config, 'GROQ_API_KEY', None)
+        current_openrouter = getattr(config, 'OPENROUTER_API_KEY', None)
+        current_cf_tok = getattr(config, 'CLOUDFLARE_API_TOKEN', None)
+        current_cf_acc = getattr(config, 'CLOUDFLARE_ACCOUNT_ID', None)
+
+        if current_gemini:
+            available_ai.append("gemini")
+        if current_groq:
+            available_ai.append("groq")
+        if current_openrouter:
+            available_ai.append("openrouter")
+        if current_cf_tok and current_cf_acc:
+            available_ai.append("cloudflare")
+
+        if not available_ai:
             parser.error(
-                "❌ Missing configuration: The '--ai' (-i) and '--learn' (-L) options require 'GEMINI_API_KEY' to be configured.\n\n"
+                "❌ Missing configuration: The '--ai' (-i) and '--learn' (-L) options require an AI Cloud Provider API key to be configured (Gemini, Groq, OpenRouter, or Cloudflare).\n\n"
                 "💡 How to fix:\n"
                 "  1. Run the configuration wizard:\n"
                 "     python main.py configure\n"
                 "  2. Or set the key via CLI:\n"
                 "     python main.py config --set api.gemini_api_key \"<your_gemini_key>\"\n"
-                "  3. Or use the environment variable:\n"
-                "     export RENAME_GEMINI_API_KEY=\"<your_gemini_key>\""
+                "     python main.py config --set api.groq_api_key \"<your_groq_key>\"\n"
+                "  3. Or use environment variables:\n"
+                "     export RENAME_GEMINI_API_KEY=\"<your_gemini_key>\"\n"
+                "     export RENAME_GROQ_API_KEY=\"<your_groq_key>\""
+            )
+
+        if args.provider and args.provider != "auto" and args.provider not in available_ai:
+            parser.error(
+                f"❌ Missing configuration: AI provider '{args.provider}' requested via '--provider', but its credentials are not configured."
             )
 
     return args

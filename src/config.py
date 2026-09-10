@@ -8,11 +8,15 @@ from pathlib import Path
 class ConfigManager:
     SCHEMA = {
         "paths": ["movies_folder", "tv_shows_folder", "not_sorted_media_files_folder"],
-        "api": ["tmdb_api_key", "gemini_api_key"],
+        "api": [
+            "tmdb_api_key", "gemini_api_key", "groq_api_key",
+            "openrouter_api_key", "cloudflare_api_token", "cloudflare_account_id"
+        ],
         "mail": ["mail", "mail_pswd"],
         "options": [
             "bypass", "ai", "log", "verbose", "resolution", "quality",
-            "notify_on_success", "notify_on_error", "notify_on_tag", "autonomous", "polling_interval", "learn"
+            "notify_on_success", "notify_on_error", "notify_on_tag", "autonomous", "polling_interval", "learn",
+            "ai_provider", "tmdb_min_confidence", "ai_min_confidence"
         ]
     }
 
@@ -22,6 +26,10 @@ class ConfigManager:
         "paths.not_sorted_media_files_folder": ["RENAME_NOT_SORTED_MEDIA_FILES_FOLDER", "RENAME_DOWNLOADS_FOLDER"],
         "api.tmdb_api_key": ["RENAME_TMDB_API_KEY", "TMDB_API_KEY"],
         "api.gemini_api_key": ["RENAME_GEMINI_API_KEY", "GEMINI_API_KEY"],
+        "api.groq_api_key": ["RENAME_GROQ_API_KEY", "GROQ_API_KEY"],
+        "api.openrouter_api_key": ["RENAME_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"],
+        "api.cloudflare_api_token": ["RENAME_CLOUDFLARE_API_TOKEN", "CLOUDFLARE_API_TOKEN"],
+        "api.cloudflare_account_id": ["RENAME_CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_ACCOUNT_ID"],
         "mail.mail": ["RENAME_MAIL"],
         "mail.mail_pswd": ["RENAME_MAIL_PSWD"],
         "options.bypass": ["RENAME_BYPASS"],
@@ -36,6 +44,9 @@ class ConfigManager:
         "options.notify_on_tag": ["RENAME_NOTIFY_ON_TAG"],
         "options.autonomous": ["RENAME_AUTONOMOUS"],
         "options.polling_interval": ["RENAME_POLLING_INTERVAL"],
+        "options.ai_provider": ["RENAME_AI_PROVIDER"],
+        "options.tmdb_min_confidence": ["RENAME_TMDB_MIN_CONFIDENCE"],
+        "options.ai_min_confidence": ["RENAME_AI_MIN_CONFIDENCE"],
     }
 
     KEY_TO_ATTR = {
@@ -44,6 +55,10 @@ class ConfigManager:
         "paths.not_sorted_media_files_folder": "NOT_SORTED_MEDIA_FILES_FOLDER",
         "api.tmdb_api_key": "TMDB_API_KEY",
         "api.gemini_api_key": "GEMINI_API_KEY",
+        "api.groq_api_key": "GROQ_API_KEY",
+        "api.openrouter_api_key": "OPENROUTER_API_KEY",
+        "api.cloudflare_api_token": "CLOUDFLARE_API_TOKEN",
+        "api.cloudflare_account_id": "CLOUDFLARE_ACCOUNT_ID",
         "mail.mail": "MAIL",
         "mail.mail_pswd": "MAIL_PSWD",
         "options.bypass": "BYPASS",
@@ -58,6 +73,9 @@ class ConfigManager:
         "options.notify_on_tag": "NOTIFY_ON_TAG",
         "options.autonomous": "AUTONOMOUS",
         "options.polling_interval": "POLLING_INTERVAL",
+        "options.ai_provider": "AI_PROVIDER",
+        "options.tmdb_min_confidence": "TMDB_MIN_CONFIDENCE",
+        "options.ai_min_confidence": "AI_MIN_CONFIDENCE",
     }
 
     ATTR_TO_KEY = {v: k for k, v in KEY_TO_ATTR.items()}
@@ -76,7 +94,10 @@ class ConfigManager:
         "options.autonomous"
     }
 
-    SECRET_KEYS = {"api.tmdb_api_key", "api.gemini_api_key", "mail.mail_pswd"}
+    SECRET_KEYS = {
+        "api.tmdb_api_key", "api.gemini_api_key", "mail.mail_pswd",
+        "api.groq_api_key", "api.openrouter_api_key", "api.cloudflare_api_token"
+    }
 
     def __init__(self, custom_path=None):
         self.custom_path = custom_path
@@ -168,6 +189,12 @@ class ConfigManager:
             return (True, "DEFAULT")
         if section_dot_key == "options.polling_interval":
             return (15, "DEFAULT")
+        if section_dot_key == "options.ai_provider":
+            return ("auto", "DEFAULT")
+        if section_dot_key == "options.tmdb_min_confidence":
+            return (0.75, "DEFAULT")
+        if section_dot_key == "options.ai_min_confidence":
+            return (0.70, "DEFAULT")
         if section_dot_key in self.BOOLEAN_KEYS:
             return (False, "DEFAULT")
         return (None, "DEFAULT")
@@ -201,6 +228,19 @@ class ConfigManager:
                 self.parser.set(section, key, str(int_val))
             except ValueError:
                 raise ValueError("Polling interval must be a positive integer (>= 1 minute).")
+        elif section_dot_key == "options.ai_provider":
+            val_str = str(value).strip().lower()
+            if val_str not in ("auto", "gemini", "groq", "openrouter", "cloudflare"):
+                raise ValueError("AI provider must be one of: auto, gemini, groq, openrouter, cloudflare.")
+            self.parser.set(section, key, val_str)
+        elif section_dot_key in ("options.tmdb_min_confidence", "options.ai_min_confidence"):
+            try:
+                val_f = float(str(value).strip())
+                if not (0.0 <= val_f <= 1.0):
+                    raise ValueError()
+                self.parser.set(section, key, str(val_f))
+            except ValueError:
+                raise ValueError(f"{key} must be a float between 0.0 and 1.0.")
         # Normalize boolean values
         elif f"{section}.{key}" in self.BOOLEAN_KEYS:
             val_bool = str(value).strip().lower() in ("true", "1", "yes", "y", "t")
@@ -296,6 +336,30 @@ class ConfigManager:
         if gemini_input.strip() and gemini_input != gemini_masked:
             self.set("api.gemini_api_key", gemini_input)
 
+        current_groq = self.get("api.groq_api_key") or ""
+        groq_masked = f"{current_groq[:4]}...{current_groq[-4:]}" if len(current_groq) > 8 else current_groq
+        groq_input = Prompt.ask("Groq Cloud API Key (Optional AI Fallback)", default=groq_masked)
+        if groq_input.strip() and groq_input != groq_masked:
+            self.set("api.groq_api_key", groq_input)
+
+        current_openrouter = self.get("api.openrouter_api_key") or ""
+        openrouter_masked = f"{current_openrouter[:4]}...{current_openrouter[-4:]}" if len(current_openrouter) > 8 else current_openrouter
+        openrouter_input = Prompt.ask("OpenRouter API Key (Optional AI Fallback)", default=openrouter_masked)
+        if openrouter_input.strip() and openrouter_input != openrouter_masked:
+            self.set("api.openrouter_api_key", openrouter_input)
+
+        current_cf_tok = self.get("api.cloudflare_api_token") or ""
+        cf_tok_masked = f"{current_cf_tok[:4]}...{current_cf_tok[-4:]}" if len(current_cf_tok) > 8 else current_cf_tok
+        cf_tok_input = Prompt.ask("Cloudflare Workers AI Token (Optional)", default=cf_tok_masked)
+        if cf_tok_input.strip() and cf_tok_input != cf_tok_masked:
+            self.set("api.cloudflare_api_token", cf_tok_input)
+
+        current_cf_acc = self.get("api.cloudflare_account_id") or ""
+        cf_acc_masked = f"{current_cf_acc[:4]}...{current_cf_acc[-4:]}" if len(current_cf_acc) > 8 else current_cf_acc
+        cf_acc_input = Prompt.ask("Cloudflare Account ID (Optional)", default=cf_acc_masked)
+        if cf_acc_input.strip() and cf_acc_input != cf_acc_masked:
+            self.set("api.cloudflare_account_id", cf_acc_input)
+
         # --- 3. Email Alerts (Optional) ---
         console.print("\n[bold magenta]📧 Email Alerts Configuration (Optional)[/bold magenta]")
         console.print("[dim]Best Practice: Useful for headless/server cron jobs. Requires a 16-letter Gmail App Password created via Google Account Security.[/dim]")
@@ -339,6 +403,11 @@ class ConfigManager:
         cur_learn = bool(self.get("options.learn", False))
         learn_input = Confirm.ask("Enable AI keyword learning by default (save missing tags discovered by Gemini) (-L)?", default=cur_learn)
         self.set("options.learn", "true" if learn_input else "false")
+
+        cur_prov = str(self.get("options.ai_provider") or "auto")
+        prov_input = Prompt.ask("Default AI Provider (auto, gemini, groq, openrouter, cloudflare)", default=cur_prov)
+        if prov_input.strip().lower() in ("auto", "gemini", "groq", "openrouter", "cloudflare"):
+            self.set("options.ai_provider", prov_input.strip().lower())
 
         cur_log = bool(self.get("options.log", False))
         log_input = Confirm.ask("Write execution logs to daily log files instead of terminal (-l)?", default=cur_log)
@@ -513,6 +582,85 @@ class ConfigManager:
     @POLLING_INTERVAL.setter
     def POLLING_INTERVAL(self, value):
         self.set("options.polling_interval", str(value))
+
+    @property
+    def GROQ_API_KEY(self):
+        return self.get("api.groq_api_key")
+
+    @GROQ_API_KEY.setter
+    def GROQ_API_KEY(self, value):
+        if value is None:
+            self.unset("api.groq_api_key")
+        else:
+            self.set("api.groq_api_key", str(value))
+
+    @property
+    def OPENROUTER_API_KEY(self):
+        return self.get("api.openrouter_api_key")
+
+    @OPENROUTER_API_KEY.setter
+    def OPENROUTER_API_KEY(self, value):
+        if value is None:
+            self.unset("api.openrouter_api_key")
+        else:
+            self.set("api.openrouter_api_key", str(value))
+
+    @property
+    def CLOUDFLARE_API_TOKEN(self):
+        return self.get("api.cloudflare_api_token")
+
+    @CLOUDFLARE_API_TOKEN.setter
+    def CLOUDFLARE_API_TOKEN(self, value):
+        if value is None:
+            self.unset("api.cloudflare_api_token")
+        else:
+            self.set("api.cloudflare_api_token", str(value))
+
+    @property
+    def CLOUDFLARE_ACCOUNT_ID(self):
+        return self.get("api.cloudflare_account_id")
+
+    @CLOUDFLARE_ACCOUNT_ID.setter
+    def CLOUDFLARE_ACCOUNT_ID(self, value):
+        if value is None:
+            self.unset("api.cloudflare_account_id")
+        else:
+            self.set("api.cloudflare_account_id", str(value))
+
+    @property
+    def AI_PROVIDER(self) -> str:
+        val = self.get("options.ai_provider", "auto")
+        return str(val).strip().lower() if val else "auto"
+
+    @AI_PROVIDER.setter
+    def AI_PROVIDER(self, value):
+        self.set("options.ai_provider", str(value).strip().lower())
+
+    @property
+    def TMDB_MIN_CONFIDENCE(self) -> float:
+        val = self.get("options.tmdb_min_confidence", 0.75)
+        try:
+            val_f = float(val)
+            return val_f if 0.0 <= val_f <= 1.0 else 0.75
+        except (ValueError, TypeError):
+            return 0.75
+
+    @TMDB_MIN_CONFIDENCE.setter
+    def TMDB_MIN_CONFIDENCE(self, value):
+        self.set("options.tmdb_min_confidence", str(value))
+
+    @property
+    def AI_MIN_CONFIDENCE(self) -> float:
+        val = self.get("options.ai_min_confidence", 0.70)
+        try:
+            val_f = float(val)
+            return val_f if 0.0 <= val_f <= 1.0 else 0.70
+        except (ValueError, TypeError):
+            return 0.70
+
+    @AI_MIN_CONFIDENCE.setter
+    def AI_MIN_CONFIDENCE(self, value):
+        self.set("options.ai_min_confidence", str(value))
 
 
 # Singleton instance

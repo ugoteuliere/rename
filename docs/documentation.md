@@ -130,8 +130,11 @@ Options can be enabled/disabled in the configuration file or enabled temporarily
 | `-R` | `--resolution` | `options.resolution` | `false` | Detects and appends video resolution tags (e.g. `[1080p]`, `[4K]`). Requires `ffprobe`. |
 | `-q` | `--quality` | `options.quality` | `false` | Detects and appends video encoding/source quality tags (e.g. `[FullHD BluRay]`). Requires `ffprobe`. |
 | `-b` | `--bypass` | `options.bypass` | `false` | Bypass user confirmation prompts and run non-interactively. |
-| `-i` | `--ai` | `options.ai` | `false` | Enables Gemini AI fallback to identify heavily obfuscated filenames when standard parsing fails. |
-| `-L` | `--learn` | `options.learn` | `false` | Enables AI keyword learning: saves missing tags discovered by Gemini into `gemini_tags.json`. Available across all operational modes. Automatically enables AI fallback. |
+| `-i` | `--ai` | `options.ai` | `false` | Enables Cloud AI fallback to identify heavily obfuscated filenames when standard parsing fails. |
+| `-L` | `--learn` | `options.learn` | `false` | Enables AI keyword learning: saves missing tags discovered by AI into `gemini_tags.json`. Available across all operational modes. Automatically enables AI fallback. |
+| — | `--provider <name>` | `options.ai_provider` | `auto` | Choose AI Cloud provider (`auto`, `gemini`, `groq`, `openrouter`, `cloudflare`). |
+| — | — | `options.tmdb_min_confidence` | `0.75` | Confidence threshold ($0.0 - 1.0$) for local TMDB matches before triggering AI fallback. |
+| — | — | `options.ai_min_confidence` | `0.70` | Minimum confidence score ($0.0 - 1.0$) required from AI models to accept renamed title. |
 | `-l` | `--log` | `options.log` | `false` | Suppresses terminal output and writes logs to a dedicated daily log file. |
 | `-v` | `--verbose` | `options.verbose` | `false` | Displays detailed error tracebacks in terminal output. |
 | — | `--notify-success` | `options.notify_on_success` | `false` | Sends an email notification each time a media file is successfully processed. |
@@ -151,6 +154,9 @@ python main.py -s -L
 # Non-interactive run with AI fallback and keyword learning enabled
 python main.py --bypass --ai --learn
 
+# Run with a specific AI Cloud Provider (e.g. Groq)
+python main.py --ai --provider groq
+
 # Autonomous watcher with AI keyword learning
 python main.py -a -L
 
@@ -164,29 +170,110 @@ python main.py -r --path="D:/Torrents/Complete"
 python main.py --bypass --log
 ```
 
-## 🔑 Setup Guides (APIs, Email & FFmpeg)
+## 🧠 Multi-Cloud AI Architecture & Smart Fallback
 
-### TMDB API Key
+The media parser features an intelligent multi-cloud AI fallback system designed for speed, resilience, and zero maintenance:
+
+- **100% Optional & Independent**: The tool is fully functional without any AI API key or AI fallback activated. If you only want standard regex/PTN parsing and TMDB queries, no AI setup is required. Keyword learning (`-L`) and AI fallback (`-i`) are completely separate and optional.
+- **TMDB Match Probability Scorer**: After local parsing, the system computes a match probability $P \in [0.0, 1.0]$ between the parsed filename and TMDB search results (combining sequence similarity, token overlap, containment, and release year proximity). If the score is below threshold (default `< 0.75`) and AI fallback is enabled, the item is queued for AI verification.
+- **Batch Processing**: Instead of calling external AI APIs file-by-file, items needing AI fallback are bundled into batches (up to 25 files per request), slashing latency and token usage.
+- **Single-Provider Execution with Quota Failover**: For each batch, exactly one active provider is called. If that provider returns a quota exhaustion or rate-limit error (HTTP 429 / ResourceExhausted), the batch automatically fails over to the next configured provider in your chain.
+- **Structured Pydantic Outputs**: Responses are validated via Pydantic models with title sanitization (defending against path traversal) and confidence score validation.
+
+---
+
+## 🔑 Setup Guides & Free API Key Tutorials
+
+### 1. TMDB API Key (Core Metadata)
+The Movie Database (TMDB) API key is required to query official movie and series metadata:
 1. Create a free account at [The Movie Database (TMDB)](https://www.themoviedb.org/).
 2. Go to **Settings** > **API**.
 3. Under "Request an API Key", select **Developer**.
-4. Accept the terms and submit the application.
-5. Copy the generated **API Key (v3 auth)** and set it via:
+4. Fill in the application details and accept the terms of service.
+5. Copy your **API Key (v3 auth)** (or API Read Access Token) and configure it:
    ```bash
-   python main.py config --set api.tmdb_api_key "your_key_here"
+   python main.py config --set api.tmdb_api_key "your_tmdb_key_here"
+   # Or environment variable:
+   export RENAME_TMDB_API_KEY="your_tmdb_key_here"
    ```
 
-### Gemini API Key (AI Fallback)
-1. Sign in to [Google AI Studio](https://aistudio.google.com/).
-2. Click **Get API key** in the left navigation.
-3. Click **Create API key**.
-4. Copy the key and set it via:
-   ```bash
-   python main.py config --set api.gemini_api_key "your_key_here"
-   ```
-*(Note: Gemini Free Tier provides 5 requests per minute, which is sufficient for unidentifiable media).*
+---
 
-### Gmail App Password & Email Notifications
+### 2. Google Gemini API (AI Cloud Provider)
+Powered by `gemini-2.5-flash-lite`, Google Gemini provides fast, state-of-the-art title extraction and missing tag detection:
+- **Free Tier**: 15 requests per minute, 1,500 requests per day (free of charge).
+- **Tutorial**:
+  1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey).
+  2. Sign in with your Google account.
+  3. Click **Get API key** > **Create API key**.
+  4. Select or create a Google Cloud project and copy your API key.
+  5. Configure it in the tool:
+     ```bash
+     python main.py config --set api.gemini_api_key "AIzaSy..."
+     # Or environment variable:
+     export RENAME_GEMINI_API_KEY="AIzaSy..."
+     ```
+
+---
+
+### 3. Groq Cloud API (AI Cloud Provider)
+Powered by ultra-fast LPU inference running `llama-3.3-70b-versatile`:
+- **Free Tier**: Generous free rate limits with high throughput.
+- **Tutorial**:
+  1. Visit [Groq Cloud Console](https://console.groq.com/).
+  2. Sign in with Google, GitHub, or your email.
+  3. In the left navigation menu, click **API Keys** (or go to https://console.groq.com/keys).
+  4. Click **Create API Key**, enter a name (e.g. `rename-tool`), and copy the key (starts with `gsk_...`).
+  5. Configure it in the tool:
+     ```bash
+     python main.py config --set api.groq_api_key "gsk_..."
+     # Or environment variable:
+     export RENAME_GROQ_API_KEY="gsk_..."
+     ```
+
+---
+
+### 4. OpenRouter API (AI Cloud Provider)
+Aggregates free and commercial open-source models (uses `meta-llama/llama-3.3-70b-instruct:free`):
+- **Free Tier**: Access free models with zero upfront balance.
+- **Tutorial**:
+  1. Visit [OpenRouter](https://openrouter.ai/).
+  2. Sign in with Google, GitHub, or email.
+  3. Go to **Settings** > **Keys** (or https://openrouter.ai/settings/keys).
+  4. Click **Create Key**, give it a name (e.g. `rename-app`), and copy the generated key (starts with `sk-or-v1-...`).
+  5. Configure it in the tool:
+     ```bash
+     python main.py config --set api.openrouter_api_key "sk-or-v1-..."
+     # Or environment variable:
+     export RENAME_OPENROUTER_API_KEY="sk-or-v1-..."
+     ```
+
+---
+
+### 5. Cloudflare Workers AI (AI Cloud Provider)
+Runs Meta Llama 3.1 8B (`@cf/meta/llama-3.1-8b-instruct`) on Cloudflare's serverless edge:
+- **Free Tier**: 10,000 free Neurons per day (sufficient for thousands of media titles per day).
+- **Tutorial**:
+  1. Sign in or create a free account at [Cloudflare Dashboard](https://dash.cloudflare.com/).
+  2. **Get your Account ID**: On the dashboard homepage, look at the right sidebar (under "Account ID") or in the URL `dash.cloudflare.com/<ACCOUNT_ID>`. Copy your 32-character Account ID.
+  3. **Generate an API Token**:
+     - Go to **My Profile** (top-right avatar) > **API Tokens** (or https://dash.cloudflare.com/profile/api-tokens).
+     - Click **Create Token**.
+     - Choose the **Workers AI (Read & Write)** template (or create a custom token with `Account > Workers AI > Edit` permissions).
+     - Click **Continue to summary** and then **Create Token**.
+     - Copy your API Token.
+  4. Configure both values in the tool:
+     ```bash
+     python main.py config --set api.cloudflare_account_id "<account_id>"
+     python main.py config --set api.cloudflare_api_token "<api_token>"
+     # Or environment variables:
+     export RENAME_CLOUDFLARE_ACCOUNT_ID="<account_id>"
+     export RENAME_CLOUDFLARE_API_TOKEN="<api_token>"
+     ```
+
+---
+
+### 6. Gmail App Password & Email Notifications
 1. Go to your [Google Account Security Settings](https://myaccount.google.com/security).
 2. Ensure **2-Step Verification** is enabled.
 3. In the search bar at the top, type **App passwords**.
