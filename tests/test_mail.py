@@ -135,15 +135,75 @@ def test_mail_disabled_when_credentials_missing(monkeypatch):
     monkeypatch.setattr(mail, "MAIL_PSWD", None)
     monkeypatch.setattr(config, "NOTIFY_ON_SUCCESS", True)
     monkeypatch.setattr(config, "NOTIFY_ON_ERROR", True)
+    monkeypatch.setattr(config, "NOTIFY_ON_TAG", True)
 
     assert mail.is_mail_configured() is False
     assert mail.is_success_mail_enabled() is False
     assert mail.is_error_mail_enabled() is False
+    assert mail.is_tag_mail_enabled() is False
 
 
 def test_mail_override_variables(monkeypatch):
     monkeypatch.setattr(ui, "NOTIFY_SUCCESS_ENABLED", True)
     monkeypatch.setattr(ui, "NOTIFY_ERROR_ENABLED", True)
+    monkeypatch.setattr(ui, "NOTIFY_TAG_ENABLED", True)
     with patch("src.mail.is_mail_configured", return_value=True):
         assert mail.is_success_mail_enabled() is True
         assert mail.is_error_mail_enabled() is True
+        assert mail.is_tag_mail_enabled() is True
+
+
+def test_send_tag_learned_email_formatted(monkeypatch):
+    monkeypatch.setattr(ui, "MAIL_ENABLED", True)
+    monkeypatch.setattr(mail, "MAIL", "testuser@gmail.com")
+    monkeypatch.setattr(mail, "MAIL_PSWD", "test_app_pass_12")
+    monkeypatch.setattr(config, "NOTIFY_ON_TAG", True)
+
+    with patch("src.mail._dispatch_email") as mock_dispatch:
+        mail.send_tag_learned_email(
+            tags=["CustomGroup", "x265"],
+            filename="Cryptic.Movie.2024.mkv",
+            media_title="Cryptic Movie",
+            file_path="/downloads/Cryptic.Movie.2024.mkv"
+        )
+        mock_dispatch.assert_called_once()
+        sent_msg = mock_dispatch.call_args[0][0]
+        assert "🏷️ [Renamer] New AI Tag(s) Learned: CustomGroup, x265" == sent_msg["Subject"]
+        assert sent_msg["From"] == "testuser@gmail.com"
+        assert sent_msg["To"] == "testuser@gmail.com"
+
+        assert sent_msg.is_multipart()
+        parts = [p.get_content_type() for p in sent_msg.iter_parts()]
+        assert "text/plain" in parts
+        assert "text/html" in parts
+
+
+def test_send_tag_learned_email_disabled_when_flag_false(monkeypatch):
+    monkeypatch.setattr(ui, "MAIL_ENABLED", True)
+    monkeypatch.setattr(mail, "MAIL", "testuser@gmail.com")
+    monkeypatch.setattr(mail, "MAIL_PSWD", "test_app_pass_12")
+    monkeypatch.setattr(config, "NOTIFY_ON_TAG", False)
+    monkeypatch.setattr(ui, "NOTIFY_TAG_ENABLED", False)
+
+    with patch("src.mail._dispatch_email") as mock_dispatch:
+        mail.send_tag_learned_email(
+            tags=["CustomGroup"],
+            filename="Movie.mkv"
+        )
+        mock_dispatch.assert_not_called()
+
+
+def test_send_tag_learned_email_dispatch_exception(monkeypatch):
+    monkeypatch.setattr(ui, "MAIL_ENABLED", True)
+    monkeypatch.setattr(mail, "MAIL", "testuser@gmail.com")
+    monkeypatch.setattr(mail, "MAIL_PSWD", "test_app_pass_12")
+    monkeypatch.setattr(config, "NOTIFY_ON_TAG", True)
+
+    with patch("src.mail._dispatch_email", side_effect=RuntimeError("SMTP failed")), \
+         patch("src.ui.print_log") as mock_log:
+        mail.send_tag_learned_email(
+            tags=["CustomGroup"],
+            filename="Movie.mkv"
+        )
+        logged = " ".join([str(c[0][0]) for c in mock_log.call_args_list if c[0]])
+        assert "Failed to send tag learned email" in logged

@@ -43,6 +43,16 @@ def is_error_mail_enabled() -> bool:
     return bool(getattr(config, 'NOTIFY_ON_ERROR', True))
 
 
+def is_tag_mail_enabled() -> bool:
+    """Check if tag learning notifications are enabled and configured."""
+    if not is_mail_configured():
+        return False
+    from src import ui
+    if getattr(ui, 'NOTIFY_TAG_ENABLED', False):
+        return True
+    return bool(getattr(config, 'NOTIFY_ON_TAG', False))
+
+
 def _build_html_email(title: str, badge_text: str, badge_bg: str, rows: list, error_details: str = None) -> str:
     """Generate a clean, modern, responsive HTML email."""
     rows_html = ""
@@ -268,3 +278,55 @@ def send_email(message: str, affected_file: str = None, exception: Exception = N
 def send_error_email(error_message: str, affected_file: str = None, exception: Exception = None):
     """Alias for send_email with structured error parameters."""
     send_email(error_message, affected_file=affected_file, exception=exception)
+
+
+def send_tag_learned_email(
+    tags: list[str],
+    filename: str,
+    media_title: str = None,
+    file_path: str = None
+):
+    """
+    Send a beautifully formatted notification when new AI keyword tags are learned and saved to gemini_tags.json.
+    """
+    if not is_tag_mail_enabled():
+        return
+
+    sender_email, _ = _get_credentials()
+    tags_str = ", ".join(tags)
+    subject = f"🏷️ [Renamer] New AI Tag(s) Learned: {tags_str}"
+    title = "New AI Keyword(s) Learned"
+
+    rows = [
+        ("Learned Tag(s)", tags_str, True, True),
+        ("Found In File", filename, True, False),
+    ]
+    if media_title:
+        rows.append(("Identified Title", media_title, False, False))
+    if file_path:
+        rows.append(("File Path", str(file_path), True, False))
+    rows.append(("Saved Location", "gemini_tags.json", True, False))
+
+    html_content = _build_html_email(
+        title=title,
+        badge_text="AI TAG LEARNED",
+        badge_bg="#8b5cf6",
+        rows=rows
+    )
+    text_content = _build_text_email(
+        title=title,
+        badge_text="AI TAG LEARNED",
+        rows=rows
+    )
+
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = sender_email
+    msg['To'] = sender_email
+    msg.set_content(text_content)
+    msg.add_alternative(html_content, subtype='html')
+
+    try:
+        _dispatch_email(msg)
+    except Exception as e:
+        ui.print_log(f"⚠️ Warning: Failed to send tag learned email: {e}")

@@ -108,7 +108,7 @@ def test_config_wizard_autonomous_flow(tmp_path):
         with patch("rich.prompt.Confirm.ask", side_effect=[
             False,  # bypass = False
             True,   # autonomous = True
-            False, False, False, False, False, True, False, False  # ai, learn, log, verbose, notify_succ, notify_err, res, qual
+            False, False, False, False, False, True, False, False, False  # ai, learn, log, verbose, notify_succ, notify_err, notify_tag, res, qual
         ]):
             cm.run_wizard()
 
@@ -124,7 +124,7 @@ def test_config_wizard_autonomous_flow(tmp_path):
         with patch("rich.prompt.Confirm.ask", side_effect=[
             False,  # bypass = False
             True,   # autonomous = True
-            False, False, False, False, False, True, False, False  # ai, learn, log, verbose, notify_succ, notify_err, res, qual
+            False, False, False, False, False, True, False, False, False  # ai, learn, log, verbose, notify_succ, notify_err, notify_tag, res, qual
         ]):
             cm.run_wizard()
 
@@ -139,7 +139,7 @@ def test_config_wizard_autonomous_flow(tmp_path):
         with patch("rich.prompt.Confirm.ask", side_effect=[
             False,  # bypass = False
             True,   # autonomous = True
-            False, False, False, False, False, True, False, False  # ai, learn, log, verbose, notify_succ, notify_err, res, qual
+            False, False, False, False, False, True, False, False, False  # ai, learn, log, verbose, notify_succ, notify_err, notify_tag, res, qual
         ]):
             cm.run_wizard()
 
@@ -154,7 +154,7 @@ def test_config_wizard_autonomous_flow(tmp_path):
         with patch("rich.prompt.Confirm.ask", side_effect=[
             False,  # bypass = False
             False,  # autonomous = False
-            False, False, False, False, False, True, False, False
+            False, False, False, False, False, True, False, False, False
         ]):
             cm.run_wizard()
 

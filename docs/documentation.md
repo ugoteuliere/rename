@@ -136,6 +136,7 @@ Options can be enabled/disabled in the configuration file or enabled temporarily
 | `-v` | `--verbose` | `options.verbose` | `false` | Displays detailed error tracebacks in terminal output. |
 | — | `--notify-success` | `options.notify_on_success` | `false` | Sends an email notification each time a media file is successfully processed. |
 | — | `--notify-error` | `options.notify_on_error` | `true` | Sends an email notification when a processing error occurs. |
+| `-t` | `--notify-tag` | `options.notify_on_tag` | `false` | Sends an email notification when a new AI keyword tag is discovered and saved to `gemini_tags.json`. |
 | — | `--path="<path>"` | — | Incoming folder | Override incoming download folder for rename & move; or rename in-place with -r (works standalone). |
 
 ### Examples
@@ -152,6 +153,9 @@ python main.py --bypass --ai --learn
 
 # Autonomous watcher with AI keyword learning
 python main.py -a -L
+
+# Enable AI keyword learning and receive email notifications when new tags are learned
+python main.py -L -t
 
 # Rename files in a custom folder without moving
 python main.py -r --path="D:/Torrents/Complete"
@@ -195,6 +199,7 @@ python main.py --bypass --log
    # Enable/disable specific notifications (ideal for automated server runs)
    python main.py config --set options.notify_on_success y   # Email each time a media is processed
    python main.py config --set options.notify_on_error y     # Email when an error occurs
+   python main.py config --set options.notify_on_tag y       # Email when new AI keywords are learned
    ```
 *(Note: You can also configure these settings interactively via `python main.py configure`).*
 
@@ -229,7 +234,7 @@ The application uses an isolated 3-tier system to strip release tags (codecs, re
      "tags": ["my_private_tracker", "custom_group"]
    }
    ```
-3. **Gemini Learned Tags (`gemini_tags.json`)**: When AI learning is enabled (`options.learn = true` in config or `-L / --learn` flag) and Gemini analyzes an obfuscated file, any discovered missing release tags are validated against strict guardrails (minimum length $\ge 3$, stopword blacklist, alphanumeric format) and saved to `gemini_tags.json` in your configuration folder.
+3. **Gemini Learned Tags (`gemini_tags.json`)**: When AI learning is enabled (`options.learn = true` in config or `-L / --learn` flag) and Gemini analyzes an obfuscated file, any discovered missing release tags are validated against strict guardrails (minimum length $\ge 3$, stopword blacklist, alphanumeric format) and saved to `gemini_tags.json` in your configuration folder. You can also receive dedicated email alerts whenever new keywords are learned using `-t` (`--notify-tag`) or `options.notify_on_tag = true`, showing the newly learned tags and the file in which they were found.
 
 #### AI Keyword Learning Across Operational Modes
 - **Default (Rename & Move)**: New tags are learned and saved while files are organized.

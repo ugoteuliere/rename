@@ -46,19 +46,21 @@ python main.py -L
 
 # Preview changes in simulation mode while learning new tags discovered by Gemini
 python main.py -s -L
+
+# Enable AI keyword learning and receive email alerts for newly learned tags
+python main.py -L -t
 ```
 
 ## ✨ Features
 
 - **Autonomous Background Watcher**: Runs continuously as a daemon (`-a`, `--autonomous`), polling for new downloads at configurable intervals.
-- **Plex-Standard Renaming**: Automatically identifies Movies and TV Shows via TMDB and formats titles following official Plex conventions.
-- **Simulation Mode**: Safely preview proposed renames and file moves without making any changes to your files.
-- **Rename-Only Mode**: Cleanly rename files in-place without moving them (`-r`), with standalone support for targeting any specific folder directly via `--path` without configuring library paths.
-- **Gemini AI Fallback & Safe Keyword Learning**: Employs Google's Gemini AI to identify cryptic filenames, with optional auto-learning (`-L`, `--learn`, or `options.learn = true`) protected by stopword guardrails.
-- **3-Tier Keyword Tag Engine**: High-performance single-pass regex tag cleaning with core defaults, user personal custom keywords, and safe AI learning.
-- **Resolution & Quality Tagging**: Inspects video streams to append resolution (e.g. `[1080p]`, `[4K]`) and quality tags (e.g. `[FullHD BluRay]`).
-- **Email Notifications**: Receive automated email reports on successful file processing or when errors occur (ideal for server cron jobs).
-- **Interactive Setup Wizard**: Easily configure your folders, API credentials, and persistent defaults with built-in best practice tips.
+- **Plex-Standard Renaming**: Identifies Movies and TV Shows via TMDB and formats titles following official Plex conventions.
+- **Simulation Mode**: Preview proposed renames and file moves without making any changes to your files.
+- **Rename-Only Mode**: Rename files in-place without moving them (`-r`), with standalone support for targeting any specific folder directly via `--path`.
+- **Gemini AI Fallback & Keyword Learning**: Employs Google's Gemini AI to identify cryptic filenames, with optional auto-learning to discover missing tags.
+- **Resolution & Quality Tagging**: Inspects video streams to append resolution and quality tags.
+- **Email Notifications**: Receive automated email reports on successful file processing, newly learned AI tags, or when errors occur.
+- **Interactive Setup Wizard**: Easily configure your folders, credentials, and options.
 
 ## 📖 Documentation
 

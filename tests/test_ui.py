@@ -256,18 +256,29 @@ def test_parse_arguments_resolution_quality_missing_ffprobe(monkeypatch):
 
 def test_parse_arguments_notify_flags_success(monkeypatch):
     with patch("src.ui.MAIL", "user@gmail.com"), patch("src.ui.MAIL_PSWD", "secret"):
-        monkeypatch.setattr(sys, "argv", ["main.py", "--notify-success", "--notify-error"])
+        monkeypatch.setattr(sys, "argv", ["main.py", "--notify-success", "--notify-error", "-t"])
         args = ui.parse_arguments()
         assert args.notify_success is True
         assert args.notify_error is True
+        assert args.notify_tag is True
         assert ui.NOTIFY_SUCCESS_ENABLED is True
         assert ui.NOTIFY_ERROR_ENABLED is True
+        assert ui.NOTIFY_TAG_ENABLED is True
+
+        monkeypatch.setattr(sys, "argv", ["main.py", "--notify-tag"])
+        args = ui.parse_arguments()
+        assert args.notify_tag is True
+        assert ui.NOTIFY_TAG_ENABLED is True
 
 def test_parse_arguments_notify_flags_missing_credentials(monkeypatch):
     with patch("src.ui.MAIL", None), patch("src.ui.MAIL_PSWD", None), \
          patch.object(ConfigManager, "MAIL", new_callable=PropertyMock, return_value=None), \
          patch.object(ConfigManager, "MAIL_PSWD", new_callable=PropertyMock, return_value=None):
         monkeypatch.setattr(sys, "argv", ["main.py", "--notify-success"])
+        with pytest.raises(SystemExit):
+            ui.parse_arguments()
+
+        monkeypatch.setattr(sys, "argv", ["main.py", "-t"])
         with pytest.raises(SystemExit):
             ui.parse_arguments()
 

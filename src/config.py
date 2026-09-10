@@ -12,7 +12,7 @@ class ConfigManager:
         "mail": ["mail", "mail_pswd"],
         "options": [
             "bypass", "ai", "log", "verbose", "resolution", "quality",
-            "notify_on_success", "notify_on_error", "autonomous", "polling_interval", "learn"
+            "notify_on_success", "notify_on_error", "notify_on_tag", "autonomous", "polling_interval", "learn"
         ]
     }
 
@@ -33,6 +33,7 @@ class ConfigManager:
         "options.quality": ["RENAME_QUALITY"],
         "options.notify_on_success": ["RENAME_NOTIFY_ON_SUCCESS"],
         "options.notify_on_error": ["RENAME_NOTIFY_ON_ERROR"],
+        "options.notify_on_tag": ["RENAME_NOTIFY_ON_TAG"],
         "options.autonomous": ["RENAME_AUTONOMOUS"],
         "options.polling_interval": ["RENAME_POLLING_INTERVAL"],
     }
@@ -54,6 +55,7 @@ class ConfigManager:
         "options.quality": "QUALITY",
         "options.notify_on_success": "NOTIFY_ON_SUCCESS",
         "options.notify_on_error": "NOTIFY_ON_ERROR",
+        "options.notify_on_tag": "NOTIFY_ON_TAG",
         "options.autonomous": "AUTONOMOUS",
         "options.polling_interval": "POLLING_INTERVAL",
     }
@@ -70,6 +72,7 @@ class ConfigManager:
         "options.quality",
         "options.notify_on_success",
         "options.notify_on_error",
+        "options.notify_on_tag",
         "options.autonomous"
     }
 
@@ -304,7 +307,7 @@ class ConfigManager:
 
         # --- 4. Automation & Runtime Options ---
         console.print("\n[bold magenta]⚙️ Automation & Runtime Options[/bold magenta]")
-        console.print("[dim]Best Practice: Set default execution behaviors so you do not need to specify flags on every run. CLI flags (-b, -i, -L, -l, -v) will always override these defaults.[/dim]")
+        console.print("[dim]Best Practice: Set default execution behaviors so you do not need to specify flags on every run. CLI flags (-b, -i, -L, -l, -v, -t) will always override these defaults.[/dim]")
         cur_bypass = bool(self.get("options.bypass", False))
         bypass_input = Confirm.ask("Bypass confirmation prompts and run non-interactively (-b)?", default=cur_bypass)
         self.set("options.bypass", "true" if bypass_input else "false")
@@ -347,6 +350,10 @@ class ConfigManager:
         cur_err = bool(self.get("options.notify_on_error", True))
         notify_err_input = Confirm.ask("Send an email notification when an error occurs?", default=cur_err)
         self.set("options.notify_on_error", "true" if notify_err_input else "false")
+
+        cur_tag = bool(self.get("options.notify_on_tag", False))
+        notify_tag_input = Confirm.ask("Send an email notification when a new AI keyword tag is learned (-t)?", default=cur_tag)
+        self.set("options.notify_on_tag", "true" if notify_tag_input else "false")
 
         # --- 5. Technical Video Tags ---
         console.print("\n[bold magenta]🎞️ Video Stream Options (Requires FFmpeg)[/bold magenta]")
@@ -424,6 +431,14 @@ class ConfigManager:
     @NOTIFY_ON_ERROR.setter
     def NOTIFY_ON_ERROR(self, value):
         self.set("options.notify_on_error", "true" if value else "false")
+
+    @property
+    def NOTIFY_ON_TAG(self) -> bool:
+        return bool(self.get("options.notify_on_tag", False))
+
+    @NOTIFY_ON_TAG.setter
+    def NOTIFY_ON_TAG(self, value):
+        self.set("options.notify_on_tag", "true" if value else "false")
 
     @property
     def BYPASS(self) -> bool:

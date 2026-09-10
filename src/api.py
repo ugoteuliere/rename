@@ -3,8 +3,7 @@ import json
 import requests
 import urllib.parse
 from google import genai
-from src.mail import send_email
-from src import ui
+from src import ui, mail
 from src.ui import print_log, print_error, VERBOSE_ENABLED
 from data.data import TAGS
 from src.tags import tag_manager
@@ -151,9 +150,14 @@ def gemini_api_call(media_info):
             
             if missing_tags:
                 if getattr(ui, 'LEARN_ENABLED', False):
-                    tag_manager.add_gemini_tags(missing_tags)
-                    message = f"Gemini API was called to rename the media file: {title}.\n    The following tag(s) was(were) added: {missing_tags}."
-                    send_email(message)
+                    added_tags = tag_manager.add_gemini_tags(missing_tags)
+                    if added_tags:
+                        mail.send_tag_learned_email(
+                            tags=added_tags,
+                            filename=media_info.get('File', title),
+                            media_title=title,
+                            file_path=media_info.get('Path')
+                        )
                     print_log(f" ⚠️  Found new missing tags: {missing_tags}")
                 else:
                     print_log(f" ℹ️  Found missing tags (learning disabled): {missing_tags}")

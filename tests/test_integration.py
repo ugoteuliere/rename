@@ -235,11 +235,16 @@ def test_integration_3_tier_tags_and_gemini_learning(media_env, monkeypatch):
     monkeypatch.setattr("google.genai.Client", lambda api_key: mock_client)
     monkeypatch.setattr("src.api.GEMINI_API_KEY", "dummy_key")
     monkeypatch.setattr("src.ui.GEMINI_API_KEY", "dummy_key")
-    monkeypatch.setattr(sys, "argv", ["main.py", "-L", "-b"])
+    monkeypatch.setattr(sys, "argv", ["main.py", "-L", "-b", "-t"])
 
-    with patch("src.mail.send_email"):
+    with patch("src.mail.send_tag_learned_email") as mock_tag_mail:
         exit_code = main.main()
         assert exit_code == 0
+        mock_tag_mail.assert_called_once()
+        call_kwargs = mock_tag_mail.call_args.kwargs
+        assert "CrypticGroup" in call_kwargs["tags"]
+        assert "PrivateTrackerXYZ.Arrival.2016.1080p.BluRay.x264.CrypticGroup.mkv" in call_kwargs["filename"]
+        assert call_kwargs["media_title"] == "Arrival"
 
     # 4. Verify movie was processed and moved
     assert (movies / "Arrival (2016).mkv").is_file()
@@ -333,7 +338,7 @@ def test_integration_simulation_with_learning(media_env, monkeypatch):
     monkeypatch.setattr("src.ui.GEMINI_API_KEY", "dummy_key")
     monkeypatch.setattr(sys, "argv", ["main.py", "-s", "-L", "-b"])
 
-    with patch("src.mail.send_email"):
+    with patch("src.mail.send_tag_learned_email"):
         exit_code = main.main()
         assert exit_code == 0
 
@@ -382,7 +387,7 @@ def test_integration_rename_only_with_learning(media_env, monkeypatch):
     monkeypatch.setattr("src.ui.GEMINI_API_KEY", "dummy_key")
     monkeypatch.setattr(sys, "argv", ["main.py", "-r", "-L", "-b"])
 
-    with patch("src.mail.send_email"):
+    with patch("src.mail.send_tag_learned_email"):
         exit_code = main.main()
         assert exit_code == 0
 
@@ -452,7 +457,7 @@ def test_integration_autonomous_with_learning(media_env, monkeypatch):
         return current_time
     monkeypatch.setattr("time.time", mock_time)
 
-    with patch("src.mail.send_email"):
+    with patch("src.mail.send_tag_learned_email"):
         exit_code = main.run_autonomous_loop(args, max_cycles=1)
         assert exit_code == 0
 

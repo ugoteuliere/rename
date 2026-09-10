@@ -34,12 +34,13 @@ RESOLUTION_ENABLED = False
 QUALITY_ENABLED = False
 NOTIFY_SUCCESS_ENABLED = False
 NOTIFY_ERROR_ENABLED = False
+NOTIFY_TAG_ENABLED = False
 AUTONOMOUS_ENABLED = False
 POLLING_INTERVAL = 15
 
 def parse_arguments():
     global LOG_ENABLED, MAIL_ENABLED, AI_FALLBACK_ENABLED, LEARN_ENABLED, BYPASS_ENABLED, VERBOSE_ENABLED, SIMULATE_ENABLED
-    global RESOLUTION_ENABLED, QUALITY_ENABLED, NOTIFY_SUCCESS_ENABLED, NOTIFY_ERROR_ENABLED
+    global RESOLUTION_ENABLED, QUALITY_ENABLED, NOTIFY_SUCCESS_ENABLED, NOTIFY_ERROR_ENABLED, NOTIFY_TAG_ENABLED
     global AUTONOMOUS_ENABLED, POLLING_INTERVAL
 
     description_text = (
@@ -55,6 +56,7 @@ def parse_arguments():
         "  python main.py -a                 (Autonomous mode: continuous background polling)\n"
         "  python main.py -a --interval 10   (Autonomous mode with 10-minute polling)\n"
         "  python main.py -L                 (Enables AI keyword learning)\n"
+        "  python main.py -t                 (Sends email notification when an AI keyword is learned)\n"
         "  python main.py -R -q              (Appends resolution & quality tags)\n"
         "  python main.py --notify-success   (Sends email notification on success)\n"
         "  python main.py configure          (Interactive configuration wizard)\n"
@@ -102,6 +104,8 @@ def parse_arguments():
                             help="Send an email notification on successful media processing.")
     auto_group.add_argument("--notify-error", action="store_true",
                             help="Send an email notification when a processing error occurs.")
+    auto_group.add_argument("-t", "--notify-tag", action="store_true",
+                            help="Send an email notification when a new AI keyword tag is discovered and saved.")
 
     # Subparsers for config commands
     subparsers = parser.add_subparsers(dest="subcommand")
@@ -157,12 +161,13 @@ def parse_arguments():
     QUALITY_ENABLED = bool(args.quality or getattr(config, 'QUALITY', False))
     NOTIFY_SUCCESS_ENABLED = bool(args.notify_success)
     NOTIFY_ERROR_ENABLED = bool(args.notify_error)
+    NOTIFY_TAG_ENABLED = bool(args.notify_tag)
 
     from src import utils as utils_module
     utils_module.RESOLUTION = RESOLUTION_ENABLED
     utils_module.QUALITY = QUALITY_ENABLED
 
-    if (args.notify_success or args.notify_error) and not MAIL_ENABLED:
+    if (args.notify_success or args.notify_error or args.notify_tag) and not MAIL_ENABLED:
         parser.error(
             "❌ Missing configuration: Email notification flags require 'mail' and 'mail_pswd' to be configured in [mail].\n\n"
             "💡 How to fix:\n"
