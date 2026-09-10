@@ -179,9 +179,15 @@ def test_integration_autonomous_multi_cycle_daemon(media_env, monkeypatch):
     # Run 2 cycles
     ui.POLLING_INTERVAL = 1
     ui.BYPASS_ENABLED = True
-    with patch("time.sleep"):
-        exit_code = main.run_autonomous_loop(args, max_cycles=2)
-        assert exit_code == 0
+    current_time = 0.0
+    def mock_time():
+        nonlocal current_time
+        current_time += 100.0
+        return current_time
+    monkeypatch.setattr("time.time", mock_time)
+
+    exit_code = main.run_autonomous_loop(args, max_cycles=2)
+    assert exit_code == 0
 
     # Inception should be processed and moved
     assert (movies / "Inception (2010).mkv").is_file()
@@ -192,7 +198,7 @@ def test_integration_autonomous_multi_cycle_daemon(media_env, monkeypatch):
 
 
 def test_integration_3_tier_tags_and_gemini_learning(media_env, monkeypatch):
-    """End-to-end integration test: 3-tier tag loading, cleaning, and Gemini learning."""
+    """End-to-end integration test: 3-tier tag loading, cleaning, and Gemini learning with -L flag."""
     config_dir = media_env["config_dir"]
     downloads = media_env["downloads"]
     movies = media_env["movies"]
@@ -228,11 +234,12 @@ def test_integration_3_tier_tags_and_gemini_learning(media_env, monkeypatch):
     monkeypatch.setattr("src.api.api_call", mock_tmdb)
     monkeypatch.setattr("google.genai.Client", lambda api_key: mock_client)
     monkeypatch.setattr("src.api.GEMINI_API_KEY", "dummy_key")
-    monkeypatch.setattr("src.ui.AI_FALLBACK_ENABLED", True)
-    monkeypatch.setattr(sys, "argv", ["main.py", "-i", "-b"])
+    monkeypatch.setattr("src.ui.GEMINI_API_KEY", "dummy_key")
+    monkeypatch.setattr(sys, "argv", ["main.py", "-L", "-b"])
 
-    exit_code = main.main()
-    assert exit_code == 0
+    with patch("src.mail.send_email"):
+        exit_code = main.main()
+        assert exit_code == 0
 
     # 4. Verify movie was processed and moved
     assert (movies / "Arrival (2016).mkv").is_file()
@@ -243,6 +250,217 @@ def test_integration_3_tier_tags_and_gemini_learning(media_env, monkeypatch):
     gemini_content = json.loads(gemini_file.read_text(encoding="utf-8"))
     assert "CrypticGroup" in gemini_content["tags"]
     assert "the" not in gemini_content["tags"]
+
+
+def test_integration_gemini_learning_disabled(media_env, monkeypatch):
+    """Integration test: When learning is disabled (no -L, options.learn=false), tags are NOT saved to gemini_tags.json."""
+    config_dir = media_env["config_dir"]
+    downloads = media_env["downloads"]
+    movies = media_env["movies"]
+
+    cryptic_file = downloads / "UnknownGroup.Arrival.2016.1080p.mkv"
+    cryptic_file.write_text("arrival content", encoding="utf-8")
+
+    tm = TagManager(config_dir=str(config_dir))
+    monkeypatch.setattr("src.tags.tag_manager", tm)
+    monkeypatch.setattr("src.utils.tag_manager", tm)
+    monkeypatch.setattr("src.api.tag_manager", tm)
+
+    def mock_tmdb(name, year, language, media_type):
+        return [False, None, None, None]
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = json.dumps({
+        "success": 1,
+        "name": "Arrival",
+        "year": "2016",
+        "original_language": "en",
+        "missing_tags": ["UnknownGroup"]
+    })
+    mock_client.models.generate_content.return_value = mock_response
+
+    monkeypatch.setattr("src.api.api_call", mock_tmdb)
+    monkeypatch.setattr("google.genai.Client", lambda api_key: mock_client)
+    monkeypatch.setattr("src.api.GEMINI_API_KEY", "dummy_key")
+    monkeypatch.setattr("src.ui.GEMINI_API_KEY", "dummy_key")
+    monkeypatch.setattr(sys, "argv", ["main.py", "-i", "-b"])
+
+    with patch("src.mail.send_email") as mock_email:
+        exit_code = main.main()
+        assert exit_code == 0
+        mock_email.assert_not_called()
+
+    # Movie processed and moved
+    assert (movies / "Arrival (2016).mkv").is_file()
+
+    # gemini_tags.json must NOT exist
+    gemini_file = config_dir / "gemini_tags.json"
+    assert not gemini_file.exists()
+
+
+def test_integration_simulation_with_learning(media_env, monkeypatch):
+    """Integration test: In simulation mode with -L, tags are learned, but media files are untouched on disk."""
+    config_dir = media_env["config_dir"]
+    downloads = media_env["downloads"]
+    movies = media_env["movies"]
+
+    cryptic_file = downloads / "SimLearnedGroup.Arrival.2016.1080p.mkv"
+    cryptic_file.write_text("arrival content", encoding="utf-8")
+
+    tm = TagManager(config_dir=str(config_dir))
+    monkeypatch.setattr("src.tags.tag_manager", tm)
+    monkeypatch.setattr("src.utils.tag_manager", tm)
+    monkeypatch.setattr("src.api.tag_manager", tm)
+
+    def mock_tmdb(name, year, language, media_type):
+        return [False, None, None, None]
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = json.dumps({
+        "success": 1,
+        "name": "Arrival",
+        "year": "2016",
+        "original_language": "en",
+        "missing_tags": ["SimLearnedGroup"]
+    })
+    mock_client.models.generate_content.return_value = mock_response
+
+    monkeypatch.setattr("src.api.api_call", mock_tmdb)
+    monkeypatch.setattr("google.genai.Client", lambda api_key: mock_client)
+    monkeypatch.setattr("src.api.GEMINI_API_KEY", "dummy_key")
+    monkeypatch.setattr("src.ui.GEMINI_API_KEY", "dummy_key")
+    monkeypatch.setattr(sys, "argv", ["main.py", "-s", "-L", "-b"])
+
+    with patch("src.mail.send_email"):
+        exit_code = main.main()
+        assert exit_code == 0
+
+    # Media file untouched
+    assert cryptic_file.is_file()
+    assert len(list(movies.iterdir())) == 0
+
+    # But tag was learned into gemini_tags.json
+    gemini_file = config_dir / "gemini_tags.json"
+    assert gemini_file.is_file()
+    gemini_content = json.loads(gemini_file.read_text(encoding="utf-8"))
+    assert "SimLearnedGroup" in gemini_content["tags"]
+
+
+def test_integration_rename_only_with_learning(media_env, monkeypatch):
+    """Integration test: In rename-only mode (-r) with -L, tags are learned and file is renamed in-place."""
+    config_dir = media_env["config_dir"]
+    downloads = media_env["downloads"]
+    movies = media_env["movies"]
+
+    cryptic_file = downloads / "RenameOnlyGroup.Arrival.2016.1080p.mkv"
+    cryptic_file.write_text("arrival content", encoding="utf-8")
+
+    tm = TagManager(config_dir=str(config_dir))
+    monkeypatch.setattr("src.tags.tag_manager", tm)
+    monkeypatch.setattr("src.utils.tag_manager", tm)
+    monkeypatch.setattr("src.api.tag_manager", tm)
+
+    def mock_tmdb(name, year, language, media_type):
+        return [False, None, None, None]
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = json.dumps({
+        "success": 1,
+        "name": "Arrival",
+        "year": "2016",
+        "original_language": "en",
+        "missing_tags": ["RenameOnlyGroup"]
+    })
+    mock_client.models.generate_content.return_value = mock_response
+
+    monkeypatch.setattr("src.api.api_call", mock_tmdb)
+    monkeypatch.setattr("google.genai.Client", lambda api_key: mock_client)
+    monkeypatch.setattr("src.api.GEMINI_API_KEY", "dummy_key")
+    monkeypatch.setattr("src.ui.GEMINI_API_KEY", "dummy_key")
+    monkeypatch.setattr(sys, "argv", ["main.py", "-r", "-L", "-b"])
+
+    with patch("src.mail.send_email"):
+        exit_code = main.main()
+        assert exit_code == 0
+
+    # File renamed in place
+    expected = downloads / "Arrival (2016).mkv"
+    assert expected.is_file()
+    assert not cryptic_file.exists()
+    assert len(list(movies.iterdir())) == 0
+
+    # Tag learned
+    gemini_file = config_dir / "gemini_tags.json"
+    assert gemini_file.is_file()
+    gemini_content = json.loads(gemini_file.read_text(encoding="utf-8"))
+    assert "RenameOnlyGroup" in gemini_content["tags"]
+
+
+def test_integration_autonomous_with_learning(media_env, monkeypatch):
+    """Integration test: In autonomous mode with config.LEARN=True, tags are learned across cycles."""
+    config_dir = media_env["config_dir"]
+    downloads = media_env["downloads"]
+    movies = media_env["movies"]
+    cm = media_env["config_manager"]
+    cm.set("options.learn", "true")
+
+    cryptic_file = downloads / "AutoLearnGroup.Arrival.2016.1080p.mkv"
+    cryptic_file.write_text("arrival content", encoding="utf-8")
+
+    tm = TagManager(config_dir=str(config_dir))
+    monkeypatch.setattr("src.tags.tag_manager", tm)
+    monkeypatch.setattr("src.utils.tag_manager", tm)
+    monkeypatch.setattr("src.api.tag_manager", tm)
+
+    def mock_tmdb(name, year, language, media_type):
+        return [False, None, None, None]
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = json.dumps({
+        "success": 1,
+        "name": "Arrival",
+        "year": "2016",
+        "original_language": "en",
+        "missing_tags": ["AutoLearnGroup"]
+    })
+    mock_client.models.generate_content.return_value = mock_response
+
+    monkeypatch.setattr("src.api.api_call", mock_tmdb)
+    monkeypatch.setattr("google.genai.Client", lambda api_key: mock_client)
+    monkeypatch.setattr("src.api.GEMINI_API_KEY", "dummy_key")
+    monkeypatch.setattr("src.ui.GEMINI_API_KEY", "dummy_key")
+
+    args = MagicMock()
+    args.path = None
+    args.only_rename = False
+    args.simulate = False
+    args.learn = False  # Enabled via config.LEARN!
+
+    ui.POLLING_INTERVAL = 1
+    ui.BYPASS_ENABLED = True
+    ui.LEARN_ENABLED = True
+    ui.AI_FALLBACK_ENABLED = True
+
+    current_time = 0.0
+    def mock_time():
+        nonlocal current_time
+        current_time += 100.0
+        return current_time
+    monkeypatch.setattr("time.time", mock_time)
+
+    with patch("src.mail.send_email"):
+        exit_code = main.run_autonomous_loop(args, max_cycles=1)
+        assert exit_code == 0
+
+    assert (movies / "Arrival (2016).mkv").is_file()
+    gemini_file = config_dir / "gemini_tags.json"
+    assert gemini_file.is_file()
+    gemini_content = json.loads(gemini_file.read_text(encoding="utf-8"))
+    assert "AutoLearnGroup" in gemini_content["tags"]
 
 
 def test_integration_config_cli_subcommands(media_env, monkeypatch, capsys):

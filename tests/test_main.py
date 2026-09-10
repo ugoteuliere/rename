@@ -1741,6 +1741,15 @@ def test_config_manager_env_precedence(tmp_path, monkeypatch):
     monkeypatch.setenv("RENAME_RESOLUTION", "false")
     assert cm.get("options.resolution") is False
 
+    # Test RENAME_LEARN
+    monkeypatch.setenv("RENAME_LEARN", "1")
+    assert cm.get("options.learn") is True
+    assert cm.LEARN is True
+    monkeypatch.setenv("RENAME_LEARN", "0")
+    assert cm.get("options.learn") is False
+    assert cm.LEARN is False
+    monkeypatch.delenv("RENAME_LEARN")
+
 
 def test_config_manager_get_set_unset(tmp_path):
     test_ini = tmp_path / "test.ini"
@@ -1817,7 +1826,7 @@ def test_config_wizard_mocked(tmp_path, monkeypatch):
         "app_password_16ch",    # email password
         "15",                   # polling interval
     ]):
-        with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, False, False, False, True, True, False]): # bypass, autonomous, ai, log, verbose, notify_success, notify_error, res, qual
+        with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, True, False, False, False, True, True, False]): # bypass, autonomous, ai, learn, log, verbose, notify_success, notify_error, res, qual
             cm.run_wizard()
 
     assert cm.get("paths.movies_folder") == "D:/WizardMovies"
@@ -1834,6 +1843,8 @@ def test_config_wizard_mocked(tmp_path, monkeypatch):
     assert cm.get("options.polling_interval") == "15"
     assert cm.POLLING_INTERVAL == 15
     assert cm.get("options.ai") is False
+    assert cm.get("options.learn") is True
+    assert cm.LEARN is True
     assert cm.get("options.log") is False
     assert cm.get("options.verbose") is False
     assert cm.get("options.resolution") is True
@@ -1928,7 +1939,7 @@ def test_config_validation_messages(tmp_path, monkeypatch):
                 "tmdb", "gemini", "mail", "pass",
                 "15"
             ]):
-                with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, False, False, False, True, True, True]):
+                with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, False, False, False, False, True, True, True]):
                     cm.run_wizard()
 
             printed = " ".join([str(call[0][0]) for call in mock_console.call_args_list if call[0]])

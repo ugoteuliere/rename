@@ -26,6 +26,7 @@ MAIL_PSWD = getattr(config, 'MAIL_PSWD', None)
 LOG_ENABLED = False
 MAIL_ENABLED = False
 AI_FALLBACK_ENABLED = False
+LEARN_ENABLED = False
 BYPASS_ENABLED = False
 VERBOSE_ENABLED = False
 SIMULATE_ENABLED = False
@@ -37,7 +38,7 @@ AUTONOMOUS_ENABLED = False
 POLLING_INTERVAL = 15
 
 def parse_arguments():
-    global LOG_ENABLED, MAIL_ENABLED, AI_FALLBACK_ENABLED, BYPASS_ENABLED, VERBOSE_ENABLED, SIMULATE_ENABLED
+    global LOG_ENABLED, MAIL_ENABLED, AI_FALLBACK_ENABLED, LEARN_ENABLED, BYPASS_ENABLED, VERBOSE_ENABLED, SIMULATE_ENABLED
     global RESOLUTION_ENABLED, QUALITY_ENABLED, NOTIFY_SUCCESS_ENABLED, NOTIFY_ERROR_ENABLED
     global AUTONOMOUS_ENABLED, POLLING_INTERVAL
 
@@ -53,6 +54,7 @@ def parse_arguments():
         "  python main.py -s                 (Simulation mode: preview changes without modifying disk)\n"
         "  python main.py -a                 (Autonomous mode: continuous background polling)\n"
         "  python main.py -a --interval 10   (Autonomous mode with 10-minute polling)\n"
+        "  python main.py -L                 (Enables AI keyword learning)\n"
         "  python main.py -R -q              (Appends resolution & quality tags)\n"
         "  python main.py --notify-success   (Sends email notification on success)\n"
         "  python main.py configure          (Interactive configuration wizard)\n"
@@ -80,6 +82,8 @@ def parse_arguments():
                             help="Detect and append video encoding/quality tags (e.g. [FullHD BluRay]).")
     proc_group.add_argument("-i", "--ai", action="store_true", 
                             help="Enables the Gemini AI fallback to intelligently parse and correct highly obfuscated filenames.")
+    proc_group.add_argument("-L", "--learn", action="store_true",
+                            help="Enable AI keyword learning to discover and save missing tags from Gemini.")
     proc_group.add_argument("--path", type=str, default=None,
                             help="Target a specific folder as source (overrides downloads folder, or renames in-place with -r).")
 
@@ -143,8 +147,9 @@ def parse_arguments():
     else:
         POLLING_INTERVAL = getattr(config, 'POLLING_INTERVAL', 15)
 
+    LEARN_ENABLED = bool(args.learn or getattr(config, 'LEARN', False))
+    AI_FALLBACK_ENABLED = bool(args.ai or getattr(config, 'AI', False) or LEARN_ENABLED)
     BYPASS_ENABLED = bool(args.bypass or getattr(config, 'BYPASS', False) or AUTONOMOUS_ENABLED)
-    AI_FALLBACK_ENABLED = bool(args.ai or getattr(config, 'AI', False))
     LOG_ENABLED = bool(args.log or getattr(config, 'LOG', False) or AUTONOMOUS_ENABLED)
     VERBOSE_ENABLED = bool(args.verbose or getattr(config, 'VERBOSE', False))
     SIMULATE_ENABLED = bool(args.simulate)
@@ -180,7 +185,7 @@ def parse_arguments():
         current_gemini = GEMINI_API_KEY or getattr(config, 'GEMINI_API_KEY', None)
         if not current_gemini:
             parser.error(
-                "❌ Missing configuration: The '--ai' (-i) option requires 'GEMINI_API_KEY' to be configured.\n\n"
+                "❌ Missing configuration: The '--ai' (-i) and '--learn' (-L) options require 'GEMINI_API_KEY' to be configured.\n\n"
                 "💡 How to fix:\n"
                 "  1. Run the configuration wizard:\n"
                 "     python main.py configure\n"

@@ -12,7 +12,7 @@ class ConfigManager:
         "mail": ["mail", "mail_pswd"],
         "options": [
             "bypass", "ai", "log", "verbose", "resolution", "quality",
-            "notify_on_success", "notify_on_error", "autonomous", "polling_interval"
+            "notify_on_success", "notify_on_error", "autonomous", "polling_interval", "learn"
         ]
     }
 
@@ -26,6 +26,7 @@ class ConfigManager:
         "mail.mail_pswd": ["RENAME_MAIL_PSWD"],
         "options.bypass": ["RENAME_BYPASS"],
         "options.ai": ["RENAME_AI"],
+        "options.learn": ["RENAME_LEARN"],
         "options.log": ["RENAME_LOG"],
         "options.verbose": ["RENAME_VERBOSE"],
         "options.resolution": ["RENAME_RESOLUTION"],
@@ -46,6 +47,7 @@ class ConfigManager:
         "mail.mail_pswd": "MAIL_PSWD",
         "options.bypass": "BYPASS",
         "options.ai": "AI",
+        "options.learn": "LEARN",
         "options.log": "LOG",
         "options.verbose": "VERBOSE",
         "options.resolution": "RESOLUTION",
@@ -61,6 +63,7 @@ class ConfigManager:
     BOOLEAN_KEYS = {
         "options.bypass",
         "options.ai",
+        "options.learn",
         "options.log",
         "options.verbose",
         "options.resolution",
@@ -301,7 +304,7 @@ class ConfigManager:
 
         # --- 4. Automation & Runtime Options ---
         console.print("\n[bold magenta]⚙️ Automation & Runtime Options[/bold magenta]")
-        console.print("[dim]Best Practice: Set default execution behaviors so you do not need to specify flags on every run. CLI flags (-b, -i, -l, -v) will always override these defaults.[/dim]")
+        console.print("[dim]Best Practice: Set default execution behaviors so you do not need to specify flags on every run. CLI flags (-b, -i, -L, -l, -v) will always override these defaults.[/dim]")
         cur_bypass = bool(self.get("options.bypass", False))
         bypass_input = Confirm.ask("Bypass confirmation prompts and run non-interactively (-b)?", default=cur_bypass)
         self.set("options.bypass", "true" if bypass_input else "false")
@@ -324,6 +327,10 @@ class ConfigManager:
         cur_ai = bool(self.get("options.ai", False))
         ai_input = Confirm.ask("Enable Gemini AI fallback by default for unrecognized filenames (-i)?", default=cur_ai)
         self.set("options.ai", "true" if ai_input else "false")
+
+        cur_learn = bool(self.get("options.learn", False))
+        learn_input = Confirm.ask("Enable AI keyword learning by default (save missing tags discovered by Gemini) (-L)?", default=cur_learn)
+        self.set("options.learn", "true" if learn_input else "false")
 
         cur_log = bool(self.get("options.log", False))
         log_input = Confirm.ask("Write execution logs to daily log files instead of terminal (-l)?", default=cur_log)
@@ -433,6 +440,14 @@ class ConfigManager:
     @AI.setter
     def AI(self, value):
         self.set("options.ai", "true" if value else "false")
+
+    @property
+    def LEARN(self) -> bool:
+        return bool(self.get("options.learn", False))
+
+    @LEARN.setter
+    def LEARN(self, value):
+        self.set("options.learn", "true" if value else "false")
 
     @property
     def LOG(self) -> bool:

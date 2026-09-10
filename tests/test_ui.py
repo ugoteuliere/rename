@@ -107,6 +107,30 @@ def test_parse_arguments_ai_missing_key(monkeypatch):
         with pytest.raises(SystemExit):
             ui.parse_arguments()
 
+
+def test_parse_arguments_learn_flags(monkeypatch):
+    with patch("src.ui.GEMINI_API_KEY", "fake_key"):
+        monkeypatch.setattr(sys, "argv", ["main.py", "-L"])
+        args = ui.parse_arguments()
+        assert args.learn is True
+        assert ui.LEARN_ENABLED is True
+        assert ui.AI_FALLBACK_ENABLED is True
+
+        monkeypatch.setattr(sys, "argv", ["main.py", "--learn"])
+        args = ui.parse_arguments()
+        assert args.learn is True
+        assert ui.LEARN_ENABLED is True
+        assert ui.AI_FALLBACK_ENABLED is True
+
+
+def test_parse_arguments_learn_missing_key(monkeypatch):
+    monkeypatch.setattr(ui, "GEMINI_API_KEY", None)
+    with patch.object(ConfigManager, "GEMINI_API_KEY", new_callable=PropertyMock, return_value=None):
+        monkeypatch.setattr(sys, "argv", ["main.py", "-L"])
+        with pytest.raises(SystemExit):
+            ui.parse_arguments()
+
+
 def test_parse_arguments_config_subcommand(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["main.py", "configure"])
     args = ui.parse_arguments()
@@ -114,7 +138,7 @@ def test_parse_arguments_config_subcommand(monkeypatch):
 
 def test_parse_arguments_config_precedence(monkeypatch, tmp_path):
     test_ini = tmp_path / "prec.ini"
-    test_ini.write_text("[options]\nbypass = y\nai = y\nlog = y\nverbose = y\n", encoding="utf-8")
+    test_ini.write_text("[options]\nbypass = y\nai = y\nlearn = y\nlog = y\nverbose = y\n", encoding="utf-8")
     cm = ConfigManager(custom_path=str(test_ini))
 
     with patch("src.ui.config", cm), patch("src.ui.GEMINI_API_KEY", "fake_gemini"):
@@ -122,6 +146,7 @@ def test_parse_arguments_config_precedence(monkeypatch, tmp_path):
         args = ui.parse_arguments()
         assert ui.BYPASS_ENABLED is True
         assert ui.AI_FALLBACK_ENABLED is True
+        assert ui.LEARN_ENABLED is True
         assert ui.LOG_ENABLED is True
         assert ui.VERBOSE_ENABLED is True
 

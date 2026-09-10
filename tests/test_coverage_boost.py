@@ -185,7 +185,9 @@ def test_gemini_api_call_success_with_missing_tags(monkeypatch):
     with patch("google.genai.Client", return_value=mock_client), \
          patch("src.api.send_email") as mock_send_email, \
          patch("src.api.print_log") as mock_print_log, \
-         patch("src.ui.VERBOSE_ENABLED", True):
+         patch("src.ui.VERBOSE_ENABLED", True), \
+         patch("src.ui.LEARN_ENABLED", True), \
+         patch("src.api.tag_manager.add_gemini_tags") as mock_add_tags:
 
         res = api.gemini_api_call(media_info)
         assert res[0] is True
@@ -194,6 +196,22 @@ def test_gemini_api_call_success_with_missing_tags(monkeypatch):
         assert res[3] == "en"
         assert res[4] == ["remux", "1080p"]
         mock_send_email.assert_called_once()
+        mock_add_tags.assert_called_once_with(["remux", "1080p"])
+
+    # When LEARN_ENABLED is False
+    with patch("google.genai.Client", return_value=mock_client), \
+         patch("src.api.send_email") as mock_send_email, \
+         patch("src.api.print_log") as mock_print_log, \
+         patch("src.ui.VERBOSE_ENABLED", True), \
+         patch("src.ui.LEARN_ENABLED", False), \
+         patch("src.api.tag_manager.add_gemini_tags") as mock_add_tags:
+
+        res = api.gemini_api_call(media_info)
+        assert res[0] is True
+        mock_send_email.assert_not_called()
+        mock_add_tags.assert_not_called()
+        logged = " ".join([str(c[0][0]) for c in mock_print_log.call_args_list if c[0]])
+        assert "learning disabled" in logged
 
 
 def test_gemini_api_call_success_equals_zero(monkeypatch):
@@ -342,6 +360,14 @@ def test_config_property_setters_and_string_getters(tmp_path):
     assert cm.AI is True
     cm.AI = False
     assert cm.AI is False
+
+    # LEARN
+    cm.LEARN = True
+    assert cm.LEARN is True
+    cm.set("options.learn", "y")
+    assert cm.LEARN is True
+    cm.LEARN = False
+    assert cm.LEARN is False
 
     # LOG
     cm.LOG = True

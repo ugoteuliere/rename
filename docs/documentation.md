@@ -61,6 +61,7 @@ python main.py config --set mail.mail_pswd "your_app_password"
 
 # Configure default runtime options (y/n or true/false)
 python main.py config --set options.bypass y
+python main.py config --set options.learn true
 
 # Remove a setting
 python main.py config --unset api.gemini_api_key
@@ -130,6 +131,7 @@ Options can be enabled/disabled in the configuration file or enabled temporarily
 | `-q` | `--quality` | `options.quality` | `false` | Detects and appends video encoding/source quality tags (e.g. `[FullHD BluRay]`). Requires `ffprobe`. |
 | `-b` | `--bypass` | `options.bypass` | `false` | Bypass user confirmation prompts and run non-interactively. |
 | `-i` | `--ai` | `options.ai` | `false` | Enables Gemini AI fallback to identify heavily obfuscated filenames when standard parsing fails. |
+| `-L` | `--learn` | `options.learn` | `false` | Enables AI keyword learning: saves missing tags discovered by Gemini into `gemini_tags.json`. Available across all operational modes. Automatically enables AI fallback. |
 | `-l` | `--log` | `options.log` | `false` | Suppresses terminal output and writes logs to a dedicated daily log file. |
 | `-v` | `--verbose` | `options.verbose` | `false` | Displays detailed error tracebacks in terminal output. |
 | — | `--notify-success` | `options.notify_on_success` | `false` | Sends an email notification each time a media file is successfully processed. |
@@ -142,8 +144,14 @@ Options can be enabled/disabled in the configuration file or enabled temporarily
 # Simulation run: see what would happen before touching anything
 python main.py -s
 
-# Non-interactive run with AI fallback enabled
-python main.py --bypass --ai
+# Simulation run with AI keyword learning (learns new tags while keeping media untouched on disk)
+python main.py -s -L
+
+# Non-interactive run with AI fallback and keyword learning enabled
+python main.py --bypass --ai --learn
+
+# Autonomous watcher with AI keyword learning
+python main.py -a -L
 
 # Rename files in a custom folder without moving
 python main.py -r --path="D:/Torrents/Complete"
@@ -221,5 +229,15 @@ The application uses an isolated 3-tier system to strip release tags (codecs, re
      "tags": ["my_private_tracker", "custom_group"]
    }
    ```
-3. **Gemini Learned Tags (`gemini_tags.json`)**: When the Gemini AI fallback analyzes an obfuscated file and discovers a missing release tag, it validates it against strict guardrails (minimum length $\ge 3$, stopword blacklist, alphanumeric format) and safely appends it to `gemini_tags.json` in your configuration folder.
+3. **Gemini Learned Tags (`gemini_tags.json`)**: When AI learning is enabled (`options.learn = true` in config or `-L / --learn` flag) and Gemini analyzes an obfuscated file, any discovered missing release tags are validated against strict guardrails (minimum length $\ge 3$, stopword blacklist, alphanumeric format) and saved to `gemini_tags.json` in your configuration folder.
+
+#### AI Keyword Learning Across Operational Modes
+- **Default (Rename & Move)**: New tags are learned and saved while files are organized.
+- **Rename-Only (`-r`)**: New tags are learned and saved while files are renamed in-place.
+- **Simulation Mode (`-s`)**: New tags are learned and saved into `gemini_tags.json`, but all video files and directories on disk remain completely unmodified.
+- **Autonomous Mode (`-a`)**: New tags are continuously learned across background polling cycles whenever cryptic filenames are encountered.
+- **Toggle / Persistent Setting**:
+  - Interactively configure via `python main.py configure`.
+  - Set permanently via CLI: `python main.py config --set options.learn true` or environment variable `RENAME_LEARN=true`.
+  - Enable for a single execution using `-L` or `--learn`.
 
