@@ -29,12 +29,17 @@ def media_env(tmp_path, monkeypatch):
     cm.set("paths.tv_shows_folder", str(tv_shows))
     cm.set("paths.not_sorted_media_files_folder", str(downloads))
     cm.set("options.bypass", "true")
+    cm.set("mail.mail", "test@example.com")
+    cm.set("mail.mail_pswd", "abcdefghijklmnop")
 
     monkeypatch.setattr("src.config.config", cm)
     monkeypatch.setattr("src.ui.config", cm)
     monkeypatch.setattr("src.utils.config", cm)
     monkeypatch.setattr("src.files.config", cm)
     monkeypatch.setattr("src.tags.config", cm)
+    monkeypatch.setattr("src.mail.config", cm)
+    monkeypatch.setattr("src.ui.MAIL", "test@example.com")
+    monkeypatch.setattr("src.ui.MAIL_PSWD", "abcdefghijklmnop")
 
     monkeypatch.setattr(utils, "MOVIES_FOLDER", str(movies))
     monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", str(tv_shows))
