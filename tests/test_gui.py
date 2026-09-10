@@ -117,21 +117,31 @@ def test_config_gui_init_and_load(tk_root, temp_cm):
     app.var_status.set("Testing connection...")
     app.var_status.set("Normal status")
 
-    # Test early return in _on_status_change if label not attached
-    class DummyApp:
-        pass
-    dummy = DummyApp()
-    dummy.var_status = app.var_status
-    ConfigGUI._on_status_change(dummy)
+    # Test slider handlers
+    app._on_tmdb_slider(0.85)
+    assert app.var_tmdb_conf.get() == "0.85"
+    app._on_ai_slider(0.90)
+    assert app.var_ai_conf.get() == "0.90"
 
-    # Test DWM dark mode exception branch on Windows
-    if sys.platform == "win32":
-        with patch("ctypes.windll.dwmapi.DwmSetWindowAttribute", side_effect=Exception("DWM error")):
-            ConfigGUI(tk_root, cm=temp_cm)
+    # Test secret visibility toggle
+    app.var_show_secrets.set(True)
+    app._toggle_secret_visibility()
+    app.var_show_secrets.set(False)
+    app._toggle_secret_visibility()
 
-    # Test theme exception branch
-    with patch.object(ttk.Style, "theme_use", side_effect=Exception("theme error")):
-        ConfigGUI(tk_root, cm=temp_cm)
+    # Test tab navigation
+    app._select_tab("api")
+    app._select_tab("options")
+    app._select_tab("email")
+    app._select_tab("paths")
+    app._select_tab("unknown_tab")
+
+    # Test load with invalid confidence values from config file
+    temp_cm.parser.set("options", "tmdb_min_confidence", "invalid")
+    temp_cm.parser.set("options", "ai_min_confidence", "invalid")
+    app.load_values()
+    assert app.var_tmdb_conf.get() == "invalid"
+    assert app.var_ai_conf.get() == "invalid"
 
 
 def test_config_gui_save_values(tk_root, temp_cm):
@@ -330,14 +340,14 @@ def test_config_gui_send_test_email(tk_root, temp_cm):
 
 
 def test_launch_config_gui():
-    mock_tk = MagicMock()
-    with patch("tkinter.Tk", return_value=mock_tk), \
+    mock_ctk = MagicMock()
+    with patch("customtkinter.CTk", return_value=mock_ctk), \
          patch("src.gui.ConfigGUI"):
         assert launch_config_gui() is True
-        mock_tk.mainloop.assert_called_once()
+        mock_ctk.mainloop.assert_called_once()
 
     # TclError simulates headless environment
-    with patch("tkinter.Tk", side_effect=tk.TclError("no display name and no $DISPLAY environment variable")):
+    with patch("customtkinter.CTk", side_effect=tk.TclError("no display name and no $DISPLAY environment variable")):
         assert launch_config_gui() is False
 
 
