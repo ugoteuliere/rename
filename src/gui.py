@@ -1,6 +1,7 @@
 """
 Graphical Configuration Tool for Media Organizer & Renamer.
 Built with Python's standard tkinter and ttk libraries (zero external dependencies).
+Features a sleek modern dark interface inspired by modern developer tooling.
 """
 
 import os
@@ -14,29 +15,33 @@ from src import api, mail
 
 
 class ConfigGUI:
-    """Tkinter-based configuration window for Media Organizer & Renamer."""
+    """Tkinter-based modern dark configuration window for Media Organizer & Renamer."""
 
     def __init__(self, root: tk.Tk, cm: Optional[ConfigManager] = None):
         self.root = root
         self.cm = cm or global_config
         self.root.title("🎬 Media Organizer & Renamer — Configuration")
-        self.root.geometry("740x680")
-        self.root.minsize(680, 560)
-
-        # Style configuration
-        self.style = ttk.Style(self.root)
-        available_themes = self.style.theme_names()
-        for theme in ("clam", "vista", "default"):
-            if theme in available_themes:
-                try:
-                    self.style.theme_use(theme)
-                    break
-                except Exception:
-                    pass
+        self.root.geometry("760x710")
+        self.root.minsize(700, 590)
 
         self._init_variables()
+        self._setup_dark_theme()
         self._build_ui()
         self.load_values()
+
+        # Enable native immersive dark titlebar on Windows 10/11
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                self.root.update_idletasks()
+                hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+                DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+                value = ctypes.c_int(1)
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(value), ctypes.sizeof(value)
+                )
+            except Exception:
+                pass
 
     def _init_variables(self):
         """Initializes Tkinter variables for all configuration fields."""
@@ -75,27 +80,216 @@ class ConfigGUI:
         self.var_notify_error = tk.BooleanVar(value=True)
         self.var_notify_tag = tk.BooleanVar(value=False)
 
-        # Status text
+        # Status text with reactive color updater
         self.var_status = tk.StringVar(value="Ready")
+        self.var_status.trace_add("write", self._on_status_change)
+
+    def _setup_dark_theme(self):
+        """Applies a bespoke modern dark aesthetic using ttk styles and native colors."""
+        self.style = ttk.Style(self.root)
+        available_themes = self.style.theme_names()
+        for theme in ("clam", "default"):
+            if theme in available_themes:
+                try:
+                    self.style.theme_use(theme)
+                    break
+                except Exception:
+                    pass
+
+        # Color Palette Tokens
+        self.CLR_BG = "#0f172a"          # Canvas Deep Slate (Slate 900)
+        self.CLR_CARD = "#1e293b"        # Card / Panel Surface (Slate 800)
+        self.CLR_CARD_BORDER = "#334155" # Card Stroke (Slate 700)
+        self.CLR_INPUT = "#090d16"       # Dark Input Field (Slate 950)
+        self.CLR_FG = "#f8fafc"          # High Contrast Text (Slate 50)
+        self.CLR_MUTED = "#94a3b8"       # Secondary Text (Slate 400)
+        self.CLR_HINT = "#64748b"        # Subtle Hint Text (Slate 500)
+        self.CLR_ACCENT = "#38bdf8"      # Cyan / Sky Highlight (Sky 400)
+        self.CLR_PRIMARY = "#2563eb"     # Royal Blue (Blue 600)
+        self.CLR_PRIMARY_HOVER = "#1d4ed8"
+        self.CLR_BTN = "#273549"         # Slate Button Background
+        self.CLR_BTN_HOVER = "#33445c"
+
+        # Apply root background
+        self.root.configure(bg=self.CLR_BG)
+
+        # TFrame & Card containers
+        self.style.configure("TFrame", background=self.CLR_BG)
+        self.style.configure("Card.TFrame", background=self.CLR_CARD)
+
+        # Labels
+        self.style.configure("TLabel", background=self.CLR_BG, foreground=self.CLR_FG, font=("Segoe UI", 9))
+        self.style.configure("Card.TLabel", background=self.CLR_CARD, foreground=self.CLR_FG, font=("Segoe UI", 9))
+        self.style.configure("Muted.TLabel", background=self.CLR_BG, foreground=self.CLR_MUTED, font=("Segoe UI", 9))
+        self.style.configure("CardMuted.TLabel", background=self.CLR_CARD, foreground=self.CLR_MUTED, font=("Segoe UI", 9))
+        self.style.configure("Hint.TLabel", background=self.CLR_BG, foreground=self.CLR_HINT, font=("Segoe UI", 8))
+        self.style.configure("Header.TLabel", background=self.CLR_BG, foreground=self.CLR_FG, font=("Segoe UI", 13, "bold"))
+        self.style.configure("Status.TLabel", background=self.CLR_BG, foreground=self.CLR_ACCENT, font=("Segoe UI", 9, "italic"))
+
+        # LabelFrame (Cards)
+        self.style.configure(
+            "TLabelframe",
+            background=self.CLR_CARD,
+            bordercolor=self.CLR_CARD_BORDER,
+            lightcolor=self.CLR_CARD_BORDER,
+            darkcolor=self.CLR_CARD_BORDER,
+            relief="solid",
+            borderwidth=1
+        )
+        self.style.configure(
+            "TLabelframe.Label",
+            background=self.CLR_CARD,
+            foreground=self.CLR_ACCENT,
+            font=("Segoe UI", 10, "bold")
+        )
+
+        # Notebook & Tabs
+        self.style.configure("TNotebook", background=self.CLR_BG, borderwidth=0)
+        self.style.configure(
+            "TNotebook.Tab",
+            background="#131c2e",
+            foreground=self.CLR_MUTED,
+            padding=[16, 7],
+            font=("Segoe UI", 9, "bold")
+        )
+        self.style.map(
+            "TNotebook.Tab",
+            background=[("selected", self.CLR_CARD), ("active", "#1e293b")],
+            foreground=[("selected", self.CLR_ACCENT), ("active", self.CLR_FG)]
+        )
+
+        # Inputs (Entry, Spinbox, Combobox)
+        self.style.configure(
+            "TEntry",
+            fieldbackground=self.CLR_INPUT,
+            foreground=self.CLR_FG,
+            insertcolor=self.CLR_ACCENT,
+            bordercolor=self.CLR_CARD_BORDER,
+            lightcolor=self.CLR_CARD_BORDER,
+            darkcolor=self.CLR_CARD_BORDER,
+            padding=4
+        )
+        self.style.configure(
+            "TCombobox",
+            fieldbackground=self.CLR_INPUT,
+            background=self.CLR_BTN,
+            foreground=self.CLR_FG,
+            insertcolor=self.CLR_ACCENT,
+            bordercolor=self.CLR_CARD_BORDER,
+            arrowcolor=self.CLR_ACCENT,
+            padding=4
+        )
+        self.style.configure(
+            "TSpinbox",
+            fieldbackground=self.CLR_INPUT,
+            background=self.CLR_BTN,
+            foreground=self.CLR_FG,
+            insertcolor=self.CLR_ACCENT,
+            bordercolor=self.CLR_CARD_BORDER,
+            arrowcolor=self.CLR_ACCENT,
+            padding=3
+        )
+
+        # Checkbuttons
+        self.style.configure(
+            "TCheckbutton",
+            background=self.CLR_CARD,
+            foreground=self.CLR_FG,
+            font=("Segoe UI", 9),
+            indicatorbackground=self.CLR_INPUT,
+            indicatorcolor=self.CLR_ACCENT
+        )
+        self.style.map(
+            "TCheckbutton",
+            background=[("active", self.CLR_CARD)],
+            foreground=[("active", "#ffffff")]
+        )
+
+        # Buttons
+        self.style.configure(
+            "Primary.TButton",
+            background=self.CLR_PRIMARY,
+            foreground="#ffffff",
+            font=("Segoe UI", 9, "bold"),
+            borderwidth=0,
+            padding=[14, 7]
+        )
+        self.style.map(
+            "Primary.TButton",
+            background=[("active", self.CLR_PRIMARY_HOVER), ("pressed", "#1e40af")]
+        )
+
+        self.style.configure(
+            "Secondary.TButton",
+            background=self.CLR_BTN,
+            foreground=self.CLR_FG,
+            font=("Segoe UI", 9),
+            bordercolor=self.CLR_CARD_BORDER,
+            padding=[10, 6]
+        )
+        self.style.map(
+            "Secondary.TButton",
+            background=[("active", self.CLR_BTN_HOVER), ("pressed", "#1a2333")]
+        )
+
+        self.style.configure(
+            "Test.TButton",
+            background="#172554",
+            foreground="#60a5fa",
+            font=("Segoe UI", 8, "bold"),
+            bordercolor="#1e40af",
+            padding=[7, 3]
+        )
+        self.style.map(
+            "Test.TButton",
+            background=[("active", "#1e40af")],
+            foreground=[("active", "#ffffff")]
+        )
+
+        self.style.configure(
+            "Browse.TButton",
+            background=self.CLR_BTN,
+            foreground=self.CLR_ACCENT,
+            font=("Segoe UI", 9),
+            bordercolor=self.CLR_CARD_BORDER,
+            padding=[9, 4]
+        )
+        self.style.map(
+            "Browse.TButton",
+            background=[("active", self.CLR_BTN_HOVER)]
+        )
+
+    def _on_status_change(self, *args):
+        """Dynamically adjusts the status text color depending on outcome."""
+        if not hasattr(self, "status_label"):
+            return
+        text = self.var_status.get().lower()
+        if "saved" in text or "verified" in text or "sent" in text or "success" in text:
+            self.status_label.configure(foreground="#34d399")  # Emerald 400
+        elif "error" in text or "failed" in text:
+            self.status_label.configure(foreground="#f87171")  # Rose Red 400
+        elif "testing" in text or "sending" in text:
+            self.status_label.configure(foreground="#38bdf8")  # Sky Blue 400
+        else:
+            self.status_label.configure(foreground="#94a3b8")  # Slate 400
 
     def _build_ui(self):
         """Builds the tabbed notebook and action buttons."""
-        main_frame = ttk.Frame(self.root, padding="12 12 12 12")
+        main_frame = ttk.Frame(self.root, padding="14 14 14 14")
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Header banner
         header_frame = ttk.Frame(main_frame)
-        header_frame.pack(fill=tk.X, pady=(0, 10))
+        header_frame.pack(fill=tk.X, pady=(0, 12))
         ttk.Label(
             header_frame,
             text="🎬 Media Organizer & Renamer Settings",
-            font=("Helvetica", 14, "bold")
+            style="Header.TLabel"
         ).pack(side=tk.LEFT)
         self.lbl_path = ttk.Label(
             header_frame,
             text=f"File: {self.cm.config_path}",
-            font=("Helvetica", 8),
-            foreground="gray"
+            style="Hint.TLabel"
         )
         self.lbl_path.pack(side=tk.RIGHT, pady=4)
 
@@ -103,10 +297,10 @@ class ConfigGUI:
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        self.tab_paths = ttk.Frame(self.notebook, padding=12)
-        self.tab_api = ttk.Frame(self.notebook, padding=12)
-        self.tab_options = ttk.Frame(self.notebook, padding=12)
-        self.tab_email = ttk.Frame(self.notebook, padding=12)
+        self.tab_paths = ttk.Frame(self.notebook, padding=14, style="Card.TFrame")
+        self.tab_api = ttk.Frame(self.notebook, padding=14, style="Card.TFrame")
+        self.tab_options = ttk.Frame(self.notebook, padding=14, style="Card.TFrame")
+        self.tab_email = ttk.Frame(self.notebook, padding=14, style="Card.TFrame")
 
         self.notebook.add(self.tab_paths, text="  📁 Storage Paths  ")
         self.notebook.add(self.tab_api, text="  🤖 API & Cloud AI  ")
@@ -119,23 +313,23 @@ class ConfigGUI:
         self._build_email_tab()
 
         # Bottom Action Bar
-        bottom_frame = ttk.Frame(main_frame, padding=(0, 10, 0, 0))
+        bottom_frame = ttk.Frame(main_frame, padding=(0, 12, 0, 0))
         bottom_frame.pack(fill=tk.X)
 
         self.status_label = ttk.Label(
             bottom_frame,
             textvariable=self.var_status,
-            font=("Helvetica", 9, "italic")
+            style="Status.TLabel"
         )
         self.status_label.pack(side=tk.LEFT, padx=5)
 
-        btn_close = ttk.Button(bottom_frame, text="Close", command=self.root.destroy)
+        btn_close = ttk.Button(bottom_frame, text="Close", command=self.root.destroy, style="Secondary.TButton")
         btn_close.pack(side=tk.RIGHT, padx=4)
 
-        btn_reload = ttk.Button(bottom_frame, text="🔄 Reload", command=self.load_values)
+        btn_reload = ttk.Button(bottom_frame, text="🔄 Reload", command=self.load_values, style="Secondary.TButton")
         btn_reload.pack(side=tk.RIGHT, padx=4)
 
-        btn_save = ttk.Button(bottom_frame, text="💾 Save Configuration", command=self.save_values)
+        btn_save = ttk.Button(bottom_frame, text="💾 Save Configuration", command=self.save_values, style="Primary.TButton")
         btn_save.pack(side=tk.RIGHT, padx=4)
 
     # --------------------------------------------------------------------------
@@ -145,19 +339,20 @@ class ConfigGUI:
         f = self.tab_paths
         ttk.Label(
             f,
-            text="Configure your media directories. Folders can be local drives, external disks, or NAS shares.",
-            wraplength=660,
-            foreground="#555"
-        ).pack(anchor=tk.W, pady=(0, 12))
+            text="Configure your media directories. Folders can be local drives, external disks, or NAS network shares.",
+            wraplength=680,
+            style="CardMuted.TLabel"
+        ).pack(anchor=tk.W, pady=(0, 14))
 
         def make_path_row(parent, label_text, var, browse_title):
-            group = ttk.LabelFrame(parent, text=label_text, padding=10)
+            group = ttk.LabelFrame(parent, text=label_text, padding=12)
             group.pack(fill=tk.X, pady=6)
             entry = ttk.Entry(group, textvariable=var)
             entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
             btn = ttk.Button(
                 group,
                 text="Browse...",
+                style="Browse.TButton",
                 command=lambda: self._browse_folder(var, browse_title)
             )
             btn.pack(side=tk.RIGHT)
@@ -180,8 +375,8 @@ class ConfigGUI:
         ttk.Label(
             f,
             text="TMDB API key is required for official metadata. Cloud AI providers act as smart fallbacks for cryptic filenames.",
-            wraplength=660,
-            foreground="#555"
+            wraplength=680,
+            style="CardMuted.TLabel"
         ).pack(anchor=tk.W, pady=(0, 8))
 
         # Show/hide secrets toggle
@@ -196,15 +391,15 @@ class ConfigGUI:
         self.api_entries = []
 
         def make_key_row(parent, label_text, var, test_callback=None):
-            frame = ttk.Frame(parent)
+            frame = ttk.Frame(parent, style="Card.TFrame")
             frame.pack(fill=tk.X, pady=3)
-            lbl = ttk.Label(frame, text=label_text, width=28, anchor=tk.W)
+            lbl = ttk.Label(frame, text=label_text, width=28, anchor=tk.W, style="Card.TLabel")
             lbl.pack(side=tk.LEFT)
             ent = ttk.Entry(frame, textvariable=var, show="*")
-            ent.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
+            ent.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
             self.api_entries.append(ent)
             if test_callback:
-                btn = ttk.Button(frame, text="Test", width=6, command=test_callback)
+                btn = ttk.Button(frame, text="Test", width=6, command=test_callback, style="Test.TButton")
                 btn.pack(side=tk.RIGHT)
             return ent
 
@@ -216,13 +411,13 @@ class ConfigGUI:
         make_key_row(f, "Cloudflare Account ID:", self.var_cf_acc, lambda: self._test_provider_api("cloudflare"))
 
         # Provider Selection & Thresholds
-        settings_box = ttk.LabelFrame(f, text="Provider Orchestration & Confidence Thresholds", padding=10)
+        settings_box = ttk.LabelFrame(f, text="Provider Orchestration & Confidence Thresholds", padding=12)
         settings_box.pack(fill=tk.X, pady=(10, 0))
 
         # Row 1: Default Provider
-        r1 = ttk.Frame(settings_box)
-        r1.pack(fill=tk.X, pady=3)
-        ttk.Label(r1, text="Default AI Provider:", width=26, anchor=tk.W).pack(side=tk.LEFT)
+        r1 = ttk.Frame(settings_box, style="Card.TFrame")
+        r1.pack(fill=tk.X, pady=4)
+        ttk.Label(r1, text="Default AI Provider:", width=26, anchor=tk.W, style="Card.TLabel").pack(side=tk.LEFT)
         cbo_provider = ttk.Combobox(
             r1,
             textvariable=self.var_ai_provider,
@@ -231,23 +426,23 @@ class ConfigGUI:
             width=18
         )
         cbo_provider.pack(side=tk.LEFT)
-        ttk.Label(r1, text="(auto fails over across all configured providers)", foreground="gray").pack(side=tk.LEFT, padx=8)
+        ttk.Label(r1, text="(auto fails over across all configured providers)", style="CardMuted.TLabel").pack(side=tk.LEFT, padx=8)
 
         # Row 2: TMDB Minimum Confidence
-        r2 = ttk.Frame(settings_box)
-        r2.pack(fill=tk.X, pady=3)
-        ttk.Label(r2, text="TMDB Min Confidence (0.0-1.0):", width=26, anchor=tk.W).pack(side=tk.LEFT)
+        r2 = ttk.Frame(settings_box, style="Card.TFrame")
+        r2.pack(fill=tk.X, pady=4)
+        ttk.Label(r2, text="TMDB Min Confidence (0.0-1.0):", width=26, anchor=tk.W, style="Card.TLabel").pack(side=tk.LEFT)
         sp_tmdb = ttk.Spinbox(r2, from_=0.1, to=1.0, increment=0.05, textvariable=self.var_tmdb_conf, width=8)
         sp_tmdb.pack(side=tk.LEFT)
-        ttk.Label(r2, text="Matches below this trigger AI verification (default: 0.75)", foreground="gray").pack(side=tk.LEFT, padx=8)
+        ttk.Label(r2, text="Matches below this trigger AI verification (default: 0.75)", style="CardMuted.TLabel").pack(side=tk.LEFT, padx=8)
 
         # Row 3: AI Minimum Confidence
-        r3 = ttk.Frame(settings_box)
-        r3.pack(fill=tk.X, pady=3)
-        ttk.Label(r3, text="AI Min Confidence (0.0-1.0):", width=26, anchor=tk.W).pack(side=tk.LEFT)
+        r3 = ttk.Frame(settings_box, style="Card.TFrame")
+        r3.pack(fill=tk.X, pady=4)
+        ttk.Label(r3, text="AI Min Confidence (0.0-1.0):", width=26, anchor=tk.W, style="Card.TLabel").pack(side=tk.LEFT)
         sp_ai = ttk.Spinbox(r3, from_=0.1, to=1.0, increment=0.05, textvariable=self.var_ai_conf, width=8)
         sp_ai.pack(side=tk.LEFT)
-        ttk.Label(r3, text="Threshold to accept AI title correction (default: 0.70)", foreground="gray").pack(side=tk.LEFT, padx=8)
+        ttk.Label(r3, text="Threshold to accept AI title correction (default: 0.70)", style="CardMuted.TLabel").pack(side=tk.LEFT, padx=8)
 
     def _toggle_secret_visibility(self):
         show_char = "" if self.var_show_secrets.get() else "*"
@@ -357,33 +552,33 @@ class ConfigGUI:
         f = self.tab_options
 
         # Video stream tags
-        grp_video = ttk.LabelFrame(f, text="🎞️ Video Stream Tags (FFmpeg)", padding=10)
+        grp_video = ttk.LabelFrame(f, text="🎞️ Video Stream Tags (FFmpeg)", padding=12)
         grp_video.pack(fill=tk.X, pady=6)
-        ttk.Checkbutton(grp_video, text="Detect and append resolution tags (e.g., [1080p], [4K])", variable=self.var_resolution).pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(grp_video, text="Detect and append encoding quality tags (e.g., [BluRay], [WEB-DL])", variable=self.var_quality).pack(anchor=tk.W, pady=2)
+        ttk.Checkbutton(grp_video, text="Detect and append resolution tags (e.g., [1080p], [4K])", variable=self.var_resolution).pack(anchor=tk.W, pady=3)
+        ttk.Checkbutton(grp_video, text="Detect and append encoding quality tags (e.g., [BluRay], [WEB-DL])", variable=self.var_quality).pack(anchor=tk.W, pady=3)
 
         # AI Options
-        grp_ai = ttk.LabelFrame(f, text="🧠 Cloud AI Fallback & Keyword Learning", padding=10)
+        grp_ai = ttk.LabelFrame(f, text="🧠 Cloud AI Fallback & Keyword Learning", padding=12)
         grp_ai.pack(fill=tk.X, pady=6)
-        ttk.Checkbutton(grp_ai, text="Enable Cloud AI fallback by default (-i)", variable=self.var_ai).pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(grp_ai, text="Enable AI keyword learning by default (save new tags into gemini_tags.json) (-L)", variable=self.var_learn).pack(anchor=tk.W, pady=2)
+        ttk.Checkbutton(grp_ai, text="Enable Cloud AI fallback by default (-i)", variable=self.var_ai).pack(anchor=tk.W, pady=3)
+        ttk.Checkbutton(grp_ai, text="Enable AI keyword learning by default (save new tags into gemini_tags.json) (-L)", variable=self.var_learn).pack(anchor=tk.W, pady=3)
 
         # Automation
-        grp_auto = ttk.LabelFrame(f, text="⚡ Automation & Headless Watcher", padding=10)
+        grp_auto = ttk.LabelFrame(f, text="⚡ Automation & Headless Watcher", padding=12)
         grp_auto.pack(fill=tk.X, pady=6)
-        ttk.Checkbutton(grp_auto, text="Bypass user confirmation prompts and run non-interactively (-b)", variable=self.var_bypass).pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(grp_auto, text="Enable autonomous background watcher by default (-a)", variable=self.var_autonomous).pack(anchor=tk.W, pady=2)
+        ttk.Checkbutton(grp_auto, text="Bypass user confirmation prompts and run non-interactively (-b)", variable=self.var_bypass).pack(anchor=tk.W, pady=3)
+        ttk.Checkbutton(grp_auto, text="Enable autonomous background watcher by default (-a)", variable=self.var_autonomous).pack(anchor=tk.W, pady=3)
 
-        row_int = ttk.Frame(grp_auto)
-        row_int.pack(fill=tk.X, pady=3)
-        ttk.Label(row_int, text="Autonomous polling interval (minutes):").pack(side=tk.LEFT)
+        row_int = ttk.Frame(grp_auto, style="Card.TFrame")
+        row_int.pack(fill=tk.X, pady=4)
+        ttk.Label(row_int, text="Autonomous polling interval (minutes):", style="Card.TLabel").pack(side=tk.LEFT)
         ttk.Spinbox(row_int, from_=1, to=1440, textvariable=self.var_interval, width=6).pack(side=tk.LEFT, padx=8)
 
         # Logging
-        grp_log = ttk.LabelFrame(f, text="📝 Logging & Diagnostics", padding=10)
+        grp_log = ttk.LabelFrame(f, text="📝 Logging & Diagnostics", padding=12)
         grp_log.pack(fill=tk.X, pady=6)
-        ttk.Checkbutton(grp_log, text="Write console output to daily log files (log/YYYY-MM-DD.txt) (-l)", variable=self.var_log).pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(grp_log, text="Display verbose diagnostic logs and exception tracebacks (-v)", variable=self.var_verbose).pack(anchor=tk.W, pady=2)
+        ttk.Checkbutton(grp_log, text="Write console output to daily log files (log/YYYY-MM-DD.txt) (-l)", variable=self.var_log).pack(anchor=tk.W, pady=3)
+        ttk.Checkbutton(grp_log, text="Display verbose diagnostic logs and exception tracebacks (-v)", variable=self.var_verbose).pack(anchor=tk.W, pady=3)
 
     # --------------------------------------------------------------------------
     # Tab 4: Email Alerts
@@ -393,33 +588,33 @@ class ConfigGUI:
         ttk.Label(
             f,
             text="Configure optional email notifications for headless servers or automated cron runs.",
-            wraplength=660,
-            foreground="#555"
+            wraplength=680,
+            style="CardMuted.TLabel"
         ).pack(anchor=tk.W, pady=(0, 10))
 
-        grp_creds = ttk.LabelFrame(f, text="Gmail SMTP Credentials", padding=10)
+        grp_creds = ttk.LabelFrame(f, text="Gmail SMTP Credentials", padding=12)
         grp_creds.pack(fill=tk.X, pady=6)
 
-        r1 = ttk.Frame(grp_creds)
-        r1.pack(fill=tk.X, pady=3)
-        ttk.Label(r1, text="Gmail Address:", width=22, anchor=tk.W).pack(side=tk.LEFT)
+        r1 = ttk.Frame(grp_creds, style="Card.TFrame")
+        r1.pack(fill=tk.X, pady=4)
+        ttk.Label(r1, text="Gmail Address:", width=22, anchor=tk.W, style="Card.TLabel").pack(side=tk.LEFT)
         ttk.Entry(r1, textvariable=self.var_mail).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        r2 = ttk.Frame(grp_creds)
-        r2.pack(fill=tk.X, pady=3)
-        ttk.Label(r2, text="Gmail App Password:", width=22, anchor=tk.W).pack(side=tk.LEFT)
+        r2 = ttk.Frame(grp_creds, style="Card.TFrame")
+        r2.pack(fill=tk.X, pady=4)
+        ttk.Label(r2, text="Gmail App Password:", width=22, anchor=tk.W, style="Card.TLabel").pack(side=tk.LEFT)
         ent_pswd = ttk.Entry(r2, textvariable=self.var_mail_pswd, show="*")
         ent_pswd.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.api_entries.append(ent_pswd)
 
-        btn_test_mail = ttk.Button(grp_creds, text="Send Test Email", command=self._send_test_email)
-        btn_test_mail.pack(anchor=tk.E, pady=(6, 0))
+        btn_test_mail = ttk.Button(grp_creds, text="Send Test Email", command=self._send_test_email, style="Test.TButton")
+        btn_test_mail.pack(anchor=tk.E, pady=(8, 0))
 
-        grp_notif = ttk.LabelFrame(f, text="Notification Triggers", padding=10)
+        grp_notif = ttk.LabelFrame(f, text="Notification Triggers", padding=12)
         grp_notif.pack(fill=tk.X, pady=6)
-        ttk.Checkbutton(grp_notif, text="Send email notification when media files are successfully processed", variable=self.var_notify_success).pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(grp_notif, text="Send email notification when a processing error occurs", variable=self.var_notify_error).pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(grp_notif, text="Send email notification when a new AI keyword tag is discovered (-t)", variable=self.var_notify_tag).pack(anchor=tk.W, pady=2)
+        ttk.Checkbutton(grp_notif, text="Send email notification when media files are successfully processed", variable=self.var_notify_success).pack(anchor=tk.W, pady=3)
+        ttk.Checkbutton(grp_notif, text="Send email notification when a processing error occurs", variable=self.var_notify_error).pack(anchor=tk.W, pady=3)
+        ttk.Checkbutton(grp_notif, text="Send email notification when a new AI keyword tag is discovered (-t)", variable=self.var_notify_tag).pack(anchor=tk.W, pady=3)
 
     def _send_test_email(self):
         address = self.var_mail.get().strip()
@@ -462,7 +657,7 @@ class ConfigGUI:
     # Load & Save Logic
     # --------------------------------------------------------------------------
     def load_values(self):
-        """Populates UI fields from the active ConfigManager."""
+        """Loads values from the active ConfigManager into UI variables."""
         self.var_movies.set(self.cm.get("paths.movies_folder") or "")
         self.var_tv.set(self.cm.get("paths.tv_shows_folder") or "")
         self.var_downloads.set(self.cm.get("paths.not_sorted_media_files_folder") or "")

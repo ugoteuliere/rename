@@ -111,6 +111,23 @@ def test_config_gui_init_and_load(tk_root, temp_cm):
     assert app.var_notify_error.get() is True
     assert app.var_notify_tag.get() is True
 
+    # Test status color reactivity
+    app.var_status.set("Saved successfully")
+    app.var_status.set("Failed with error")
+    app.var_status.set("Testing connection...")
+    app.var_status.set("Normal status")
+
+    # Test early return in _on_status_change if label not attached
+    class DummyApp:
+        pass
+    dummy = DummyApp()
+    dummy.var_status = app.var_status
+    ConfigGUI._on_status_change(dummy)
+
+    # Test DWM dark mode exception branch
+    with patch("ctypes.windll.dwmapi.DwmSetWindowAttribute", side_effect=Exception("DWM error")):
+        ConfigGUI(tk_root, cm=temp_cm)
+
     # Test theme exception branch
     with patch.object(ttk.Style, "theme_use", side_effect=Exception("theme error")):
         ConfigGUI(tk_root, cm=temp_cm)

@@ -274,7 +274,7 @@ Raw Filename
                              [Match Probability Scorer]
                                          │
                         ┌────────────────┴────────────────┐
-                        │ Probability >= 0.75              │ Probability < 0.75
+                        │ Probability >= 0.75             │ Probability < 0.75
                         ▼                                 ▼
                  [Accept Match]                 [Queue for AI Batch]
                                                           │
