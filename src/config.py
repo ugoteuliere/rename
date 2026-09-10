@@ -8,11 +8,15 @@ from pathlib import Path
 class ConfigManager:
     SCHEMA = {
         "paths": ["movies_folder", "tv_shows_folder", "not_sorted_media_files_folder"],
-        "api": ["tmdb_api_key", "gemini_api_key"],
+        "api": [
+            "tmdb_api_key", "gemini_api_key", "groq_api_key",
+            "openrouter_api_key", "cloudflare_api_token", "cloudflare_account_id"
+        ],
         "mail": ["mail", "mail_pswd"],
         "options": [
             "bypass", "ai", "log", "verbose", "resolution", "quality",
-            "notify_on_success", "notify_on_error", "autonomous", "polling_interval"
+            "notify_on_success", "notify_on_error", "notify_on_tag", "autonomous", "polling_interval", "learn",
+            "ai_provider", "tmdb_min_confidence", "ai_min_confidence"
         ]
     }
 
@@ -22,18 +26,27 @@ class ConfigManager:
         "paths.not_sorted_media_files_folder": ["RENAME_NOT_SORTED_MEDIA_FILES_FOLDER", "RENAME_DOWNLOADS_FOLDER"],
         "api.tmdb_api_key": ["RENAME_TMDB_API_KEY", "TMDB_API_KEY"],
         "api.gemini_api_key": ["RENAME_GEMINI_API_KEY", "GEMINI_API_KEY"],
+        "api.groq_api_key": ["RENAME_GROQ_API_KEY", "GROQ_API_KEY"],
+        "api.openrouter_api_key": ["RENAME_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"],
+        "api.cloudflare_api_token": ["RENAME_CLOUDFLARE_API_TOKEN", "CLOUDFLARE_API_TOKEN"],
+        "api.cloudflare_account_id": ["RENAME_CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_ACCOUNT_ID"],
         "mail.mail": ["RENAME_MAIL"],
         "mail.mail_pswd": ["RENAME_MAIL_PSWD"],
         "options.bypass": ["RENAME_BYPASS"],
         "options.ai": ["RENAME_AI"],
+        "options.learn": ["RENAME_LEARN"],
         "options.log": ["RENAME_LOG"],
         "options.verbose": ["RENAME_VERBOSE"],
         "options.resolution": ["RENAME_RESOLUTION"],
         "options.quality": ["RENAME_QUALITY"],
         "options.notify_on_success": ["RENAME_NOTIFY_ON_SUCCESS"],
         "options.notify_on_error": ["RENAME_NOTIFY_ON_ERROR"],
+        "options.notify_on_tag": ["RENAME_NOTIFY_ON_TAG"],
         "options.autonomous": ["RENAME_AUTONOMOUS"],
         "options.polling_interval": ["RENAME_POLLING_INTERVAL"],
+        "options.ai_provider": ["RENAME_AI_PROVIDER"],
+        "options.tmdb_min_confidence": ["RENAME_TMDB_MIN_CONFIDENCE"],
+        "options.ai_min_confidence": ["RENAME_AI_MIN_CONFIDENCE"],
     }
 
     KEY_TO_ATTR = {
@@ -42,18 +55,27 @@ class ConfigManager:
         "paths.not_sorted_media_files_folder": "NOT_SORTED_MEDIA_FILES_FOLDER",
         "api.tmdb_api_key": "TMDB_API_KEY",
         "api.gemini_api_key": "GEMINI_API_KEY",
+        "api.groq_api_key": "GROQ_API_KEY",
+        "api.openrouter_api_key": "OPENROUTER_API_KEY",
+        "api.cloudflare_api_token": "CLOUDFLARE_API_TOKEN",
+        "api.cloudflare_account_id": "CLOUDFLARE_ACCOUNT_ID",
         "mail.mail": "MAIL",
         "mail.mail_pswd": "MAIL_PSWD",
         "options.bypass": "BYPASS",
         "options.ai": "AI",
+        "options.learn": "LEARN",
         "options.log": "LOG",
         "options.verbose": "VERBOSE",
         "options.resolution": "RESOLUTION",
         "options.quality": "QUALITY",
         "options.notify_on_success": "NOTIFY_ON_SUCCESS",
         "options.notify_on_error": "NOTIFY_ON_ERROR",
+        "options.notify_on_tag": "NOTIFY_ON_TAG",
         "options.autonomous": "AUTONOMOUS",
         "options.polling_interval": "POLLING_INTERVAL",
+        "options.ai_provider": "AI_PROVIDER",
+        "options.tmdb_min_confidence": "TMDB_MIN_CONFIDENCE",
+        "options.ai_min_confidence": "AI_MIN_CONFIDENCE",
     }
 
     ATTR_TO_KEY = {v: k for k, v in KEY_TO_ATTR.items()}
@@ -61,16 +83,21 @@ class ConfigManager:
     BOOLEAN_KEYS = {
         "options.bypass",
         "options.ai",
+        "options.learn",
         "options.log",
         "options.verbose",
         "options.resolution",
         "options.quality",
         "options.notify_on_success",
         "options.notify_on_error",
+        "options.notify_on_tag",
         "options.autonomous"
     }
 
-    SECRET_KEYS = {"api.tmdb_api_key", "api.gemini_api_key", "mail.mail_pswd"}
+    SECRET_KEYS = {
+        "api.tmdb_api_key", "api.gemini_api_key", "mail.mail_pswd",
+        "api.groq_api_key", "api.openrouter_api_key", "api.cloudflare_api_token"
+    }
 
     def __init__(self, custom_path=None):
         self.custom_path = custom_path
@@ -131,6 +158,11 @@ class ConfigManager:
             temp_path = tf.name
 
         shutil.move(temp_path, str(self.config_path))
+        if os.name != 'nt':
+            try:
+                os.chmod(self.config_path, 0o600)
+            except OSError:
+                pass
 
     def get_with_source(self, section_dot_key: str):
         """Returns tuple of (value, source) where source is 'ENV', 'INI', or 'DEFAULT'."""
@@ -157,6 +189,12 @@ class ConfigManager:
             return (True, "DEFAULT")
         if section_dot_key == "options.polling_interval":
             return (15, "DEFAULT")
+        if section_dot_key == "options.ai_provider":
+            return ("auto", "DEFAULT")
+        if section_dot_key == "options.tmdb_min_confidence":
+            return (0.75, "DEFAULT")
+        if section_dot_key == "options.ai_min_confidence":
+            return (0.70, "DEFAULT")
         if section_dot_key in self.BOOLEAN_KEYS:
             return (False, "DEFAULT")
         return (None, "DEFAULT")
@@ -190,6 +228,19 @@ class ConfigManager:
                 self.parser.set(section, key, str(int_val))
             except ValueError:
                 raise ValueError("Polling interval must be a positive integer (>= 1 minute).")
+        elif section_dot_key == "options.ai_provider":
+            val_str = str(value).strip().lower()
+            if val_str not in ("auto", "gemini", "groq", "openrouter", "cloudflare"):
+                raise ValueError("AI provider must be one of: auto, gemini, groq, openrouter, cloudflare.")
+            self.parser.set(section, key, val_str)
+        elif section_dot_key in ("options.tmdb_min_confidence", "options.ai_min_confidence"):
+            try:
+                val_f = float(str(value).strip())
+                if not (0.0 <= val_f <= 1.0):
+                    raise ValueError()
+                self.parser.set(section, key, str(val_f))
+            except ValueError:
+                raise ValueError(f"{key} must be a float between 0.0 and 1.0.")
         # Normalize boolean values
         elif f"{section}.{key}" in self.BOOLEAN_KEYS:
             val_bool = str(value).strip().lower() in ("true", "1", "yes", "y", "t")
@@ -240,22 +291,20 @@ class ConfigManager:
                 })
         return items
 
-    def run_wizard(self):
-        """Interactive terminal configuration wizard."""
+    def run_gui(self) -> bool:
+        """Launches the graphical configuration interface."""
+        from src.gui import launch_config_gui
+        return launch_config_gui(self)
+
+    def wizard_paths(self, console=None):
+        """Interactive setup for media storage folders."""
         from rich.console import Console
-        from rich.prompt import Prompt, Confirm
+        from rich.prompt import Prompt
+        console = console or Console()
 
-        console = Console()
-        console.print("\n[bold cyan]==============================================[/bold cyan]")
-        console.print("[bold cyan]   🎬 Media Organizer & Renamer Setup Wizard   [/bold cyan]")
-        console.print("[bold cyan]==============================================[/bold cyan]\n")
-        console.print(f"Target Configuration File: [yellow]{self.config_path}[/yellow]\n")
-        console.print("Press [green]Enter[/green] to keep current value.\n")
-
-        # --- 1. Folder Paths ---
-        console.print("[bold magenta]📂 Folder Paths Configuration[/bold magenta]")
+        console.print("\n[bold magenta]📂 Folder Paths Configuration[/bold magenta]")
         console.print("[dim]Best Practice: Keep incoming downloads in an unsorted folder, separate from your Movies and TV Shows libraries. Folders can be local drives, USB disks, or NAS network shares.[/dim]")
-        
+
         def _prompt_and_validate_folder(label, key):
             current = self.get(key) or ""
             folder_input = Prompt.ask(label, default=current)
@@ -269,10 +318,15 @@ class ConfigManager:
         _prompt_and_validate_folder("TV Shows Folder", "paths.tv_shows_folder")
         _prompt_and_validate_folder("Unsorted Downloads Folder", "paths.not_sorted_media_files_folder")
 
-        # --- 2. API Keys ---
+    def wizard_api(self, console=None):
+        """Interactive setup for TMDB and Cloud AI providers."""
+        from rich.console import Console
+        from rich.prompt import Prompt
+        console = console or Console()
+
         console.print("\n[bold magenta]🔑 API Keys Configuration[/bold magenta]")
-        console.print("[dim]Best Practice: TMDB API key is required to query official movie/series metadata. Gemini AI key is an optional fallback for highly cryptic filenames.[/dim]")
-        
+        console.print("[dim]Best Practice: TMDB API key is required to query official movie/series metadata. Cloud AI providers act as optional fallbacks for highly cryptic filenames.[/dim]")
+
         current_tmdb = self.get("api.tmdb_api_key") or ""
         tmdb_masked = f"{current_tmdb[:4]}...{current_tmdb[-4:]}" if len(current_tmdb) > 8 else current_tmdb
         tmdb_input = Prompt.ask("TMDB API Key (Bearer/v3 token)", default=tmdb_masked)
@@ -285,7 +339,36 @@ class ConfigManager:
         if gemini_input.strip() and gemini_input != gemini_masked:
             self.set("api.gemini_api_key", gemini_input)
 
-        # --- 3. Email Alerts (Optional) ---
+        current_groq = self.get("api.groq_api_key") or ""
+        groq_masked = f"{current_groq[:4]}...{current_groq[-4:]}" if len(current_groq) > 8 else current_groq
+        groq_input = Prompt.ask("Groq Cloud API Key (Optional AI Fallback)", default=groq_masked)
+        if groq_input.strip() and groq_input != groq_masked:
+            self.set("api.groq_api_key", groq_input)
+
+        current_openrouter = self.get("api.openrouter_api_key") or ""
+        openrouter_masked = f"{current_openrouter[:4]}...{current_openrouter[-4:]}" if len(current_openrouter) > 8 else current_openrouter
+        openrouter_input = Prompt.ask("OpenRouter API Key (Optional AI Fallback)", default=openrouter_masked)
+        if openrouter_input.strip() and openrouter_input != openrouter_masked:
+            self.set("api.openrouter_api_key", openrouter_input)
+
+        current_cf_tok = self.get("api.cloudflare_api_token") or ""
+        cf_tok_masked = f"{current_cf_tok[:4]}...{current_cf_tok[-4:]}" if len(current_cf_tok) > 8 else current_cf_tok
+        cf_tok_input = Prompt.ask("Cloudflare Workers AI Token (Optional)", default=cf_tok_masked)
+        if cf_tok_input.strip() and cf_tok_input != cf_tok_masked:
+            self.set("api.cloudflare_api_token", cf_tok_input)
+
+        current_cf_acc = self.get("api.cloudflare_account_id") or ""
+        cf_acc_masked = f"{current_cf_acc[:4]}...{current_cf_acc[-4:]}" if len(current_cf_acc) > 8 else current_cf_acc
+        cf_acc_input = Prompt.ask("Cloudflare Account ID (Optional)", default=cf_acc_masked)
+        if cf_acc_input.strip() and cf_acc_input != cf_acc_masked:
+            self.set("api.cloudflare_account_id", cf_acc_input)
+
+    def wizard_email(self, console=None):
+        """Interactive setup for email alerts."""
+        from rich.console import Console
+        from rich.prompt import Prompt
+        console = console or Console()
+
         console.print("\n[bold magenta]📧 Email Alerts Configuration (Optional)[/bold magenta]")
         console.print("[dim]Best Practice: Useful for headless/server cron jobs. Requires a 16-letter Gmail App Password created via Google Account Security.[/dim]")
         current_mail = self.get("mail.mail") or ""
@@ -299,9 +382,14 @@ class ConfigManager:
         if pswd_input.strip() and pswd_input != pswd_masked:
             self.set("mail.mail_pswd", pswd_input)
 
-        # --- 4. Automation & Runtime Options ---
+    def wizard_options(self, console=None):
+        """Interactive setup for automation and runtime options."""
+        from rich.console import Console
+        from rich.prompt import Prompt, Confirm
+        console = console or Console()
+
         console.print("\n[bold magenta]⚙️ Automation & Runtime Options[/bold magenta]")
-        console.print("[dim]Best Practice: Set default execution behaviors so you do not need to specify flags on every run. CLI flags (-b, -i, -l, -v) will always override these defaults.[/dim]")
+        console.print("[dim]Best Practice: Set default execution behaviors so you do not need to specify flags on every run. CLI flags (-b, -i, -L, -l, -v, -t) will always override these defaults.[/dim]")
         cur_bypass = bool(self.get("options.bypass", False))
         bypass_input = Confirm.ask("Bypass confirmation prompts and run non-interactively (-b)?", default=cur_bypass)
         self.set("options.bypass", "true" if bypass_input else "false")
@@ -322,8 +410,17 @@ class ConfigManager:
             self.set("options.polling_interval", "15")
 
         cur_ai = bool(self.get("options.ai", False))
-        ai_input = Confirm.ask("Enable Gemini AI fallback by default for unrecognized filenames (-i)?", default=cur_ai)
+        ai_input = Confirm.ask("Enable Cloud AI fallback by default for unrecognized filenames (-i)?", default=cur_ai)
         self.set("options.ai", "true" if ai_input else "false")
+
+        cur_learn = bool(self.get("options.learn", False))
+        learn_input = Confirm.ask("Enable AI keyword learning by default (save missing tags discovered by AI) (-L)?", default=cur_learn)
+        self.set("options.learn", "true" if learn_input else "false")
+
+        cur_prov = str(self.get("options.ai_provider") or "auto")
+        prov_input = Prompt.ask("Default AI Provider (auto, gemini, groq, openrouter, cloudflare)", default=cur_prov)
+        if prov_input.strip().lower() in ("auto", "gemini", "groq", "openrouter", "cloudflare"):
+            self.set("options.ai_provider", prov_input.strip().lower())
 
         cur_log = bool(self.get("options.log", False))
         log_input = Confirm.ask("Write execution logs to daily log files instead of terminal (-l)?", default=cur_log)
@@ -341,7 +438,16 @@ class ConfigManager:
         notify_err_input = Confirm.ask("Send an email notification when an error occurs?", default=cur_err)
         self.set("options.notify_on_error", "true" if notify_err_input else "false")
 
-        # --- 5. Technical Video Tags ---
+        cur_tag = bool(self.get("options.notify_on_tag", False))
+        notify_tag_input = Confirm.ask("Send an email notification when a new AI keyword tag is learned (-t)?", default=cur_tag)
+        self.set("options.notify_on_tag", "true" if notify_tag_input else "false")
+
+    def wizard_video(self, console=None):
+        """Interactive setup for video stream FFmpeg tags."""
+        from rich.console import Console
+        from rich.prompt import Confirm
+        console = console or Console()
+
         console.print("\n[bold magenta]🎞️ Video Stream Options (Requires FFmpeg)[/bold magenta]")
         console.print("[dim]Best Practice: Extracts video stream metadata to append clean tags (e.g. [4K] [1080p] [BluRay]). Requires 'ffprobe' installed in System PATH.[/dim]")
         cur_res = bool(self.get("options.resolution", False))
@@ -356,6 +462,70 @@ class ConfigManager:
             console.print("\n[bold red]❌ Error: 'ffprobe' (FFmpeg) was not found in your System PATH.[/bold red]")
             console.print("[yellow]Resolution and quality tags will fail to be detected until FFmpeg is installed.[/yellow]")
             console.print("[dim]Installation guide: docs/documentation.md#ffmpeg-setup[/dim]")
+
+    def run_wizard(self, section: Optional[str] = None, interactive_menu: bool = False):
+        """Interactive terminal configuration wizard with modular menus and direct section access."""
+        from rich.console import Console
+        from rich.prompt import Prompt
+
+        console = Console()
+        console.print("\n[bold cyan]==============================================[/bold cyan]")
+        console.print("[bold cyan]   🎬 Media Organizer & Renamer Setup Wizard   [/bold cyan]")
+        console.print("[bold cyan]==============================================[/bold cyan]\n")
+        console.print(f"Target Configuration File: [yellow]{self.config_path}[/yellow]\n")
+
+        if interactive_menu and section is None:
+            console.print("[bold]Select configuration category:[/bold]")
+            console.print("  [cyan]1.[/cyan] 📂 Folders & Storage Paths")
+            console.print("  [cyan]2.[/cyan] 🔑 API Keys & Cloud AI Providers")
+            console.print("  [cyan]3.[/cyan] 📧 Email Alerts & Notifications")
+            console.print("  [cyan]4.[/cyan] ⚙️ Automation & Runtime Options")
+            console.print("  [cyan]5.[/cyan] 🎞️ Video Stream Options (FFmpeg)")
+            console.print("  [cyan]6.[/cyan] 🚀 Run Full Setup Wizard (all categories)")
+            console.print("  [cyan]7.[/cyan] 🖥️ Launch Graphical Configuration Tool (GUI)")
+            console.print("  [cyan]8.[/cyan] ❌ Exit\n")
+
+            choice = Prompt.ask("Enter choice", choices=["1", "2", "3", "4", "5", "6", "7", "8"], default="6")
+            if choice == "1":
+                self.wizard_paths(console)
+            elif choice == "2":
+                self.wizard_api(console)
+            elif choice == "3":
+                self.wizard_email(console)
+            elif choice == "4":
+                self.wizard_options(console)
+            elif choice == "5":
+                self.wizard_video(console)
+            elif choice == "6":
+                self.wizard_paths(console)
+                self.wizard_api(console)
+                self.wizard_email(console)
+                self.wizard_options(console)
+                self.wizard_video(console)
+            elif choice == "7":
+                self.run_gui()
+                return
+            elif choice == "8":
+                console.print("[dim]Setup wizard closed.[/dim]\n")
+                return
+        elif section == "paths":
+            self.wizard_paths(console)
+        elif section == "ai":
+            self.wizard_api(console)
+        elif section == "email":
+            self.wizard_email(console)
+        elif section == "options":
+            self.wizard_options(console)
+        elif section == "video":
+            self.wizard_video(console)
+        else:
+            # Full wizard (default when not interactive_menu)
+            console.print("Press [green]Enter[/green] to keep current value.\n")
+            self.wizard_paths(console)
+            self.wizard_api(console)
+            self.wizard_email(console)
+            self.wizard_options(console)
+            self.wizard_video(console)
 
         console.print(f"\n[bold green]✅ Configuration successfully saved to:[/bold green] [yellow]{self.config_path}[/yellow]\n")
 
@@ -419,6 +589,14 @@ class ConfigManager:
         self.set("options.notify_on_error", "true" if value else "false")
 
     @property
+    def NOTIFY_ON_TAG(self) -> bool:
+        return bool(self.get("options.notify_on_tag", False))
+
+    @NOTIFY_ON_TAG.setter
+    def NOTIFY_ON_TAG(self, value):
+        self.set("options.notify_on_tag", "true" if value else "false")
+
+    @property
     def BYPASS(self) -> bool:
         return bool(self.get("options.bypass", False))
 
@@ -433,6 +611,14 @@ class ConfigManager:
     @AI.setter
     def AI(self, value):
         self.set("options.ai", "true" if value else "false")
+
+    @property
+    def LEARN(self) -> bool:
+        return bool(self.get("options.learn", False))
+
+    @LEARN.setter
+    def LEARN(self, value):
+        self.set("options.learn", "true" if value else "false")
 
     @property
     def LOG(self) -> bool:
@@ -478,6 +664,85 @@ class ConfigManager:
     @POLLING_INTERVAL.setter
     def POLLING_INTERVAL(self, value):
         self.set("options.polling_interval", str(value))
+
+    @property
+    def GROQ_API_KEY(self):
+        return self.get("api.groq_api_key")
+
+    @GROQ_API_KEY.setter
+    def GROQ_API_KEY(self, value):
+        if value is None:
+            self.unset("api.groq_api_key")
+        else:
+            self.set("api.groq_api_key", str(value))
+
+    @property
+    def OPENROUTER_API_KEY(self):
+        return self.get("api.openrouter_api_key")
+
+    @OPENROUTER_API_KEY.setter
+    def OPENROUTER_API_KEY(self, value):
+        if value is None:
+            self.unset("api.openrouter_api_key")
+        else:
+            self.set("api.openrouter_api_key", str(value))
+
+    @property
+    def CLOUDFLARE_API_TOKEN(self):
+        return self.get("api.cloudflare_api_token")
+
+    @CLOUDFLARE_API_TOKEN.setter
+    def CLOUDFLARE_API_TOKEN(self, value):
+        if value is None:
+            self.unset("api.cloudflare_api_token")
+        else:
+            self.set("api.cloudflare_api_token", str(value))
+
+    @property
+    def CLOUDFLARE_ACCOUNT_ID(self):
+        return self.get("api.cloudflare_account_id")
+
+    @CLOUDFLARE_ACCOUNT_ID.setter
+    def CLOUDFLARE_ACCOUNT_ID(self, value):
+        if value is None:
+            self.unset("api.cloudflare_account_id")
+        else:
+            self.set("api.cloudflare_account_id", str(value))
+
+    @property
+    def AI_PROVIDER(self) -> str:
+        val = self.get("options.ai_provider", "auto")
+        return str(val).strip().lower() if val else "auto"
+
+    @AI_PROVIDER.setter
+    def AI_PROVIDER(self, value):
+        self.set("options.ai_provider", str(value).strip().lower())
+
+    @property
+    def TMDB_MIN_CONFIDENCE(self) -> float:
+        val = self.get("options.tmdb_min_confidence", 0.75)
+        try:
+            val_f = float(val)
+            return val_f if 0.0 <= val_f <= 1.0 else 0.75
+        except (ValueError, TypeError):
+            return 0.75
+
+    @TMDB_MIN_CONFIDENCE.setter
+    def TMDB_MIN_CONFIDENCE(self, value):
+        self.set("options.tmdb_min_confidence", str(value))
+
+    @property
+    def AI_MIN_CONFIDENCE(self) -> float:
+        val = self.get("options.ai_min_confidence", 0.70)
+        try:
+            val_f = float(val)
+            return val_f if 0.0 <= val_f <= 1.0 else 0.70
+        except (ValueError, TypeError):
+            return 0.70
+
+    @AI_MIN_CONFIDENCE.setter
+    def AI_MIN_CONFIDENCE(self, value):
+        self.set("options.ai_min_confidence", str(value))
 
 
 # Singleton instance

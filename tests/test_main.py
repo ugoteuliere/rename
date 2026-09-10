@@ -1741,6 +1741,24 @@ def test_config_manager_env_precedence(tmp_path, monkeypatch):
     monkeypatch.setenv("RENAME_RESOLUTION", "false")
     assert cm.get("options.resolution") is False
 
+    # Test RENAME_LEARN
+    monkeypatch.setenv("RENAME_LEARN", "1")
+    assert cm.get("options.learn") is True
+    assert cm.LEARN is True
+    monkeypatch.setenv("RENAME_LEARN", "0")
+    assert cm.get("options.learn") is False
+    assert cm.LEARN is False
+    monkeypatch.delenv("RENAME_LEARN")
+
+    # Test RENAME_NOTIFY_ON_TAG
+    monkeypatch.setenv("RENAME_NOTIFY_ON_TAG", "1")
+    assert cm.get("options.notify_on_tag") is True
+    assert cm.NOTIFY_ON_TAG is True
+    monkeypatch.setenv("RENAME_NOTIFY_ON_TAG", "0")
+    assert cm.get("options.notify_on_tag") is False
+    assert cm.NOTIFY_ON_TAG is False
+    monkeypatch.delenv("RENAME_NOTIFY_ON_TAG")
+
 
 def test_config_manager_get_set_unset(tmp_path):
     test_ini = tmp_path / "test.ini"
@@ -1813,11 +1831,16 @@ def test_config_wizard_mocked(tmp_path, monkeypatch):
         "D:/WizardDownloads",   # downloads
         "wizard_tmdb_key",      # tmdb
         "wizard_gemini_key",    # gemini
+        "wizard_groq_key",      # groq
+        "wizard_openrouter_key",# openrouter
+        "wizard_cf_token",      # cf token
+        "wizard_cf_acc",        # cf acc
         "wizard@gmail.com",     # email
         "app_password_16ch",    # email password
         "15",                   # polling interval
+        "groq",                 # ai provider
     ]):
-        with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, False, False, False, True, True, False]): # bypass, autonomous, ai, log, verbose, notify_success, notify_error, res, qual
+        with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, True, False, False, False, True, True, True, False]): # bypass, autonomous, ai, learn, log, verbose, notify_success, notify_error, notify_tag, res, qual
             cm.run_wizard()
 
     assert cm.get("paths.movies_folder") == "D:/WizardMovies"
@@ -1825,15 +1848,24 @@ def test_config_wizard_mocked(tmp_path, monkeypatch):
     assert cm.get("paths.not_sorted_media_files_folder") == "D:/WizardDownloads"
     assert cm.get("api.tmdb_api_key") == "wizard_tmdb_key"
     assert cm.get("api.gemini_api_key") == "wizard_gemini_key"
+    assert cm.get("api.groq_api_key") == "wizard_groq_key"
+    assert cm.get("api.openrouter_api_key") == "wizard_openrouter_key"
+    assert cm.get("api.cloudflare_api_token") == "wizard_cf_token"
+    assert cm.get("api.cloudflare_account_id") == "wizard_cf_acc"
+    assert cm.get("options.ai_provider") == "groq"
     assert cm.get("mail.mail") == "wizard@gmail.com"
     assert cm.get("mail.mail_pswd") == "app_password_16ch"
     assert cm.get("options.notify_on_success") is False
     assert cm.get("options.notify_on_error") is True
+    assert cm.get("options.notify_on_tag") is True
+    assert cm.NOTIFY_ON_TAG is True
     assert cm.get("options.bypass") is False
     assert cm.get("options.autonomous") is False
     assert cm.get("options.polling_interval") == "15"
     assert cm.POLLING_INTERVAL == 15
     assert cm.get("options.ai") is False
+    assert cm.get("options.learn") is True
+    assert cm.LEARN is True
     assert cm.get("options.log") is False
     assert cm.get("options.verbose") is False
     assert cm.get("options.resolution") is True
@@ -1925,10 +1957,11 @@ def test_config_validation_messages(tmp_path, monkeypatch):
                 str(tmp_path / "non_existent_movies"),
                 str(tmp_path / "non_existent_tv"),
                 str(tmp_path / "non_existent_dl"),
-                "tmdb", "gemini", "mail", "pass",
-                "15"
+                "tmdb", "gemini", "", "", "", "", "mail", "pass",
+                "15",
+                "auto"
             ]):
-                with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, False, False, False, True, True, True]):
+                with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, False, False, False, False, True, False, True, True]):
                     cm.run_wizard()
 
             printed = " ".join([str(call[0][0]) for call in mock_console.call_args_list if call[0]])

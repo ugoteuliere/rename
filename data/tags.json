@@ -1,0 +1,83 @@
+{
+  "categories": {
+    "resolutions": [
+      "480p", "720p", "1080p", "1080i", "2160p", "4k", "8k", "uhd"
+    ],
+    "sources": [
+      "bluray", "blu-ray", "bdrip", "brrip", "dvdrip", "webrip", "web-dl", "webdl", "web",
+      "hdrip", "hdtv", "pdtv", "tvrip", "cam", "ts", "telesync", "remux"
+    ],
+    "codecs": [
+      "x264", "h264", "avc", "x265", "h265", "H.265", "hevc", "av1", "xvid", "divx",
+      "10bit", "12bit", "sdr", "hdr", "hdr10", "hdr10+", "hdr10p", "dolby", "vision", "dv",
+      "hdlight", "4klight", "4kl", "mhd", "microhd", "qtz", "imax"
+    ],
+    "audio": [
+      "ac3", "eac3", "aac", "dts(?:-?hd(?:\\.?ma)?)?", "dtshd", "truehd", "atmos",
+      "flac", "mp3", "5.1", "7.1", "2.0", "3.0", "dual", "audio",
+      "MA.5.1", "MA.2.0", "MA.7.1", "MA"
+    ],
+    "languages": [
+      "vf", "vff", "vfq", "vf2", "vostfr-tag", "truefrench", "vostfr-tv", "vostfr", "vost", "subfrench",
+      "multi", "fre", "french", "eng", "english", "vfi"
+    ],
+    "editions": [
+      "extended", "unrated", "director\\.?s?\\.?cut", "dc", "remastered",
+      "repack", "proper", "limited", "special", "edition", "uncut"
+    ],
+    "release_groups": [
+      "lihdl", "fw", "final", "group", "rls", "dl", "ddp5.1", "ddp51", "team", "ddp5", "frg", "grp",
+      "amzn", "nf", "DDLBase", "EPSiLON", "FraMeSToR", "HYBRID", "BYNDR", "PmP", "MMCK", "artelabo"
+    ],
+    "patterns": [
+      "(?:saison|season|s)[.\\s-]*(\\d+)",
+      "(?:episode|ep|e)[.\\s-]*(\\d+)"
+    ]
+  },
+  "tlds": [
+    "com", "net", "org", "info", "biz", "xyz", "online",
+    "vip", "dev", "icu", "mobi", "asia", "aero", "tech",
+    "ru", "sx", "ch", "cx", "io", "cc",
+    "co", "uk", "nl", "pw", "vc", "ag", "bz",
+    "ro", "pe", "ph", "li", "fm",
+    "ac", "ae", "af", "ai", "al", "ao", "aq", "ar", "aw", "ax", "az",
+    "ba", "bb", "bf", "bg", "bh", "bi", "bj", "bm", "bn", "bo", "br", "bs", "bt", "bv", "bw",
+    "ca", "cf", "cg", "ck", "cl", "cm", "cn", "cr", "cu", "cv", "cy", "cz",
+    "dk", "dm", "dz",
+    "ec", "ee", "eg", "er",
+    "fi", "fj", "fk", "fo", "fr",
+    "ga", "gb", "gd", "ge", "gf", "gg", "gh", "gi", "gl", "gm", "gn", "gp", "gq", "gr", "gs", "gt", "gu", "gw", "gy",
+    "hk", "hm", "hn", "hr", "ht", "hu",
+    "ie", "im", "iq", "ir",
+    "jm", "jo", "jp",
+    "ke", "kg", "kh", "ki", "km", "kn", "kp", "kr", "kw", "ky", "kz",
+    "lb", "lc", "lk", "lr", "ls", "lt", "lv", "ly",
+    "mc", "md", "mg", "mh", "mk", "ml", "mm", "mn", "mo", "mp", "mq", "ms", "mt", "mu", "mv", "mw", "mx", "mz",
+    "na", "nc", "ng", "np", "nr", "nz",
+    "om",
+    "pf", "pg", "pk", "pl", "pn", "ps", "pt", "py",
+    "qa",
+    "rs", "rw",
+    "sb", "sc", "sd", "sg", "sh", "sj", "sk", "sl", "sm", "sn", "sr", "st", "sv", "sy", "sz",
+    "tc", "td", "tf", "tg", "th", "tj", "tk", "tl", "tm", "tn", "tr", "tt", "tw", "tz",
+    "ua", "ug", "uy", "uz",
+    "ve", "vg", "vi", "vn",
+    "wf",
+    "yt",
+    "za", "zm", "zw"
+  ],
+  "resolution_patterns": [
+    "\\b[48]k\\b",
+    "\\buhd\\b",
+    "\\bultra.?hd\\b",
+    "\\b\\d{3,4}p\\b",
+    "\\b\\d{3,4}i\\b",
+    "\\bhd\\b",
+    "\\bsd\\b"
+  ],
+  "quality_patterns": [
+    "\\bbluray\\b",
+    "\\bblu-ray\\b",
+    "\\bremux\\b"
+  ]
+}

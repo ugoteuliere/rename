@@ -5,3 +5,4 @@ rich
 pytest
 pytest-cov
 google-genai
+customtkinter>=6.0.0

@@ -102,13 +102,14 @@ def test_config_wizard_autonomous_flow(tmp_path):
     # Test autonomous enabled with valid interval
     with patch("rich.prompt.Prompt.ask", side_effect=[
         "D:/Movies", "D:/TV", "D:/Downloads",
-        "tmdb", "gemini", "mail", "pass",
-        "30"  # polling interval
+        "tmdb", "gemini", "groq", "openrouter", "cf_tok", "cf_acc", "mail", "pass",
+        "30",  # polling interval
+        "auto" # ai provider
     ]):
         with patch("rich.prompt.Confirm.ask", side_effect=[
             False,  # bypass = False
             True,   # autonomous = True
-            False, False, False, False, True, False, False  # ai, log, verbose, notify_succ, notify_err, res, qual
+            False, False, False, False, False, True, False, False, False  # ai, learn, log, verbose, notify_succ, notify_err, notify_tag, res, qual
         ]):
             cm.run_wizard()
 
@@ -118,13 +119,14 @@ def test_config_wizard_autonomous_flow(tmp_path):
     # Test autonomous enabled with invalid interval fallback
     with patch("rich.prompt.Prompt.ask", side_effect=[
         "D:/Movies", "D:/TV", "D:/Downloads",
-        "tmdb", "gemini", "mail", "pass",
-        "0"  # invalid interval -> fallback 15
+        "tmdb", "gemini", "", "", "", "", "mail", "pass",
+        "0",   # invalid interval -> fallback 15
+        "auto" # ai provider
     ]):
         with patch("rich.prompt.Confirm.ask", side_effect=[
             False,  # bypass = False
             True,   # autonomous = True
-            False, False, False, False, True, False, False  # ai, log, verbose, notify_succ, notify_err, res, qual
+            False, False, False, False, False, True, False, False, False  # ai, learn, log, verbose, notify_succ, notify_err, notify_tag, res, qual
         ]):
             cm.run_wizard()
 
@@ -133,13 +135,14 @@ def test_config_wizard_autonomous_flow(tmp_path):
     # Test autonomous enabled with non-numeric interval fallback
     with patch("rich.prompt.Prompt.ask", side_effect=[
         "D:/Movies", "D:/TV", "D:/Downloads",
-        "tmdb", "gemini", "mail", "pass",
-        "invalid_text"  # invalid string -> fallback 15
+        "tmdb", "gemini", "", "", "", "", "mail", "pass",
+        "invalid_text",  # invalid string -> fallback 15
+        "auto"           # ai provider
     ]):
         with patch("rich.prompt.Confirm.ask", side_effect=[
             False,  # bypass = False
             True,   # autonomous = True
-            False, False, False, False, True, False, False  # ai, log, verbose, notify_succ, notify_err, res, qual
+            False, False, False, False, False, True, False, False, False  # ai, learn, log, verbose, notify_succ, notify_err, notify_tag, res, qual
         ]):
             cm.run_wizard()
 
@@ -148,13 +151,14 @@ def test_config_wizard_autonomous_flow(tmp_path):
     # Test autonomous disabled, interval still configured
     with patch("rich.prompt.Prompt.ask", side_effect=[
         "D:/Movies", "D:/TV", "D:/Downloads",
-        "tmdb", "gemini", "mail", "pass",
-        "25"  # polling interval
+        "tmdb", "gemini", "", "", "", "", "mail", "pass",
+        "25",  # polling interval
+        "auto" # ai provider
     ]):
         with patch("rich.prompt.Confirm.ask", side_effect=[
             False,  # bypass = False
             False,  # autonomous = False
-            False, False, False, False, True, False, False
+            False, False, False, False, False, True, False, False, False
         ]):
             cm.run_wizard()
 

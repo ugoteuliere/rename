@@ -1,3 +1,4 @@
+import html
 import smtplib
 import ssl
 from datetime import datetime
@@ -43,30 +44,47 @@ def is_error_mail_enabled() -> bool:
     return bool(getattr(config, 'NOTIFY_ON_ERROR', True))
 
 
+def is_tag_mail_enabled() -> bool:
+    """Check if tag learning notifications are enabled and configured."""
+    if not is_mail_configured():
+        return False
+    from src import ui
+    if getattr(ui, 'NOTIFY_TAG_ENABLED', False):
+        return True
+    return bool(getattr(config, 'NOTIFY_ON_TAG', False))
+
+
 def _build_html_email(title: str, badge_text: str, badge_bg: str, rows: list, error_details: str = None) -> str:
-    """Generate a clean, modern, responsive HTML email."""
+    """Generate a clean, modern, responsive HTML email with escaped HTML content."""
+    safe_title = html.escape(str(title))
+    safe_badge_text = html.escape(str(badge_text))
+    safe_badge_bg = html.escape(str(badge_bg))
+
     rows_html = ""
     for label, val, is_code, is_highlight in rows:
+        escaped_label = html.escape(str(label))
+        escaped_val = html.escape(str(val))
         if is_highlight:
-            val_content = f'<strong style="color: #059669; font-size: 15px;">{val}</strong>'
+            val_content = f'<strong style="color: #059669; font-size: 15px;">{escaped_val}</strong>'
         elif is_code:
-            val_content = f'<span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background-color: #f1f5f9; padding: 4px 8px; border-radius: 4px; font-size: 13px; color: #334155; word-break: break-all;">{val}</span>'
+            val_content = f'<span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background-color: #f1f5f9; padding: 4px 8px; border-radius: 4px; font-size: 13px; color: #334155; word-break: break-all;">{escaped_val}</span>'
         else:
-            val_content = f'<span>{val}</span>'
+            val_content = f'<span>{escaped_val}</span>'
 
         rows_html += f"""
         <tr>
-          <td style="width: 140px; color: #64748b; font-size: 13px; font-weight: 600; padding: 10px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top;">{label}</td>
+          <td style="width: 140px; color: #64748b; font-size: 13px; font-weight: 600; padding: 10px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top;">{escaped_label}</td>
           <td style="color: #1e293b; font-size: 14px; padding: 10px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top;">{val_content}</td>
         </tr>
         """
 
     error_html = ""
     if error_details:
+        escaped_error = html.escape(str(error_details))
         error_html = f"""
         <div style="margin-top: 18px;">
           <div style="font-size: 13px; font-weight: 600; color: #991b1b; margin-bottom: 6px;">Error Details:</div>
-          <div style="background-color: #0f172a; color: #f87171; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; padding: 14px; border-radius: 8px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;">{error_details}</div>
+          <div style="background-color: #0f172a; color: #f87171; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; padding: 14px; border-radius: 8px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;">{escaped_error}</div>
         </div>
         """
 
@@ -77,7 +95,7 @@ def _build_html_email(title: str, badge_text: str, badge_bg: str, rows: list, er
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{title}</title>
+  <title>{safe_title}</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px 12px; color: #1e293b; line-height: 1.5;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;">
@@ -85,9 +103,9 @@ def _build_html_email(title: str, badge_text: str, badge_bg: str, rows: list, er
     <div style="background-color: #0f172a; padding: 24px; text-align: left;">
       <div style="font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">🎬 Media Organizer & Renamer</div>
       <div style="margin-bottom: 8px;">
-        <span style="display: inline-block; background-color: {badge_bg}; color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 9999px;">{badge_text}</span>
+        <span style="display: inline-block; background-color: {safe_badge_bg}; color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 9999px;">{safe_badge_text}</span>
       </div>
-      <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: #ffffff;">{title}</h1>
+      <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: #ffffff;">{safe_title}</h1>
     </div>
 
     <!-- Body -->
@@ -268,3 +286,55 @@ def send_email(message: str, affected_file: str = None, exception: Exception = N
 def send_error_email(error_message: str, affected_file: str = None, exception: Exception = None):
     """Alias for send_email with structured error parameters."""
     send_email(error_message, affected_file=affected_file, exception=exception)
+
+
+def send_tag_learned_email(
+    tags: list[str],
+    filename: str,
+    media_title: str = None,
+    file_path: str = None
+):
+    """
+    Send a beautifully formatted notification when new AI keyword tags are learned and saved to gemini_tags.json.
+    """
+    if not is_tag_mail_enabled():
+        return
+
+    sender_email, _ = _get_credentials()
+    tags_str = ", ".join(tags)
+    subject = f"🏷️ [Renamer] New AI Tag(s) Learned: {tags_str}"
+    title = "New AI Keyword(s) Learned"
+
+    rows = [
+        ("Learned Tag(s)", tags_str, True, True),
+        ("Found In File", filename, True, False),
+    ]
+    if media_title:
+        rows.append(("Identified Title", media_title, False, False))
+    if file_path:
+        rows.append(("File Path", str(file_path), True, False))
+    rows.append(("Saved Location", "gemini_tags.json", True, False))
+
+    html_content = _build_html_email(
+        title=title,
+        badge_text="AI TAG LEARNED",
+        badge_bg="#8b5cf6",
+        rows=rows
+    )
+    text_content = _build_text_email(
+        title=title,
+        badge_text="AI TAG LEARNED",
+        rows=rows
+    )
+
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = sender_email
+    msg['To'] = sender_email
+    msg.set_content(text_content)
+    msg.add_alternative(html_content, subtype='html')
+
+    try:
+        _dispatch_email(msg)
+    except Exception as e:
+        ui.print_log(f"⚠️ Warning: Failed to send tag learned email: {e}")

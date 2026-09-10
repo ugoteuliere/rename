@@ -1,11 +1,13 @@
 import sys
 import os
 import re
+import difflib
 import PTN
 import pandas as pd
 from pathlib import Path
 from src import ui, api, mail, files
 from data.data import TAGS, TLDS, QUALITY_PATTERNS, RESOLUTION_PATTERNS
+from src.tags import tag_manager
 
 from src.config import config
 MOVIES_FOLDER = getattr(config, 'MOVIES_FOLDER', None)
@@ -14,7 +16,8 @@ NOT_SORTED_MEDIA_FILES_FOLDER = getattr(config, 'NOT_SORTED_MEDIA_FILES_FOLDER',
 RESOLUTION = getattr(config, 'RESOLUTION', False)
 QUALITY = getattr(config, 'QUALITY', False)
 
-DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "data.py"
+DEFAULT_DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "data.py"
+DATA_FILE = DEFAULT_DATA_FILE
 
 def verify_folders(only_rename=False, custom_path=None, autonomous=False):
     if custom_path and only_rename and not autonomous:
@@ -135,51 +138,51 @@ def verify_folders(only_rename=False, custom_path=None, autonomous=False):
 
 def add_new_tags(missing_tags):
     if not missing_tags:
-        return
+        return []
 
-    # read file
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            content = f.read()
-    except FileNotFoundError as e:
-        raise RuntimeError(ui.print_error(f" ❌ Error: The file {DATA_FILE} does not exist",e))
+    # Safe 3-tier JSON learning with guardrails
+    tag_manager.add_gemini_tags(missing_tags)
 
-    tags_to_add = []
-    for tag in missing_tags:
-        clean_tag = tag.strip().lower()
-        if not clean_tag:
-            continue
-            
-        escaped_tag = re.escape(clean_tag)
-        
-        if f"r'{escaped_tag}'" not in content and f"r'{clean_tag}'" not in content:
-            tags_to_add.append(escaped_tag)
+    # Backward compatibility with legacy tests pointing DATA_FILE to custom mock files
+    if DATA_FILE != DEFAULT_DATA_FILE:
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                content = f.read()
+        except FileNotFoundError as e:
+            raise RuntimeError(ui.print_error(f" ❌ Error: The file {DATA_FILE} does not exist", e))
 
-    if not tags_to_add:
-        return
+        tags_to_add = []
+        for tag in missing_tags:
+            clean_tag = tag.strip().lower()
+            if not clean_tag:
+                continue
 
-    new_tags_formatted = ", ".join([f"r'{tag}'" for tag in tags_to_add])
+            escaped_tag = re.escape(clean_tag)
+            if f"r'{escaped_tag}'" not in content and f"r'{clean_tag}'" not in content:
+                tags_to_add.append(escaped_tag)
 
-    # find tags list
-    pattern = re.compile(r"(TAGS\s*=\s*\[)([^\]]*)\]")
-    match = pattern.search(content)
+        if not tags_to_add:
+            return []
 
-    if match:
-        group1 = match.group(1)
-        
-        if not group1.strip().endswith(','):
-            group1 += ','
-            
-        injection = f"\n    # === Ajout Auto Gemini ===\n    {new_tags_formatted}"
-        new_content = content[:match.end(1)] + injection + content[match.start(2):]
-        
-        # add tags to the list
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            f.write(new_content)
-            
-        ui.print_log(f" ✅ New tag(s) added to {DATA_FILE.name} : {tags_to_add}")
-    else:
-        ui.print_log(f" ❌ Error : Impossible to find TAGS list {DATA_FILE.name}")
+        new_tags_formatted = ", ".join([f"r'{tag}'" for tag in tags_to_add])
+
+        pattern = re.compile(r"(TAGS\s*=\s*\[)([^\]]*)\]")
+        match = pattern.search(content)
+
+        if match:
+            group1 = match.group(1)
+            if not group1.strip().endswith(','):
+                group1 += ','
+
+            injection = f"\n    # === Ajout Auto Gemini ===\n    {new_tags_formatted}"
+            new_content = content[:match.end(1)] + injection + content[match.start(2):]
+
+            with open(DATA_FILE, "w", encoding="utf-8") as f:
+                f.write(new_content)
+
+            ui.print_log(f" ✅ New tag(s) added to {DATA_FILE.name} : {tags_to_add}")
+        else:
+            ui.print_log(f" ❌ Error : Impossible to find TAGS list {DATA_FILE.name}")
 
 SEASON_EPISODE_PATTERNS = [
     # 1. Saison/Season XX (Episode/Ep/E) XX (ex: Saison.01E02, Saison.1E2, Season.01.Episode.02, Saison 01 Ep 02)
@@ -302,7 +305,74 @@ def sort_media_dataframe(df):
         ignore_index=True
     )
 
-def correct_movie_filename(file):
+def compute_tmdb_match_probability(parsed_name: str | None, parsed_year: str | None, tmdb_title: str | None, tmdb_year: str | None) -> float:
+    """
+    Computes a match probability P in [0.0, 1.0] between locally parsed media metadata
+    and TMDB API search results. Combines string sequence similarity, token-set overlap,
+    and year proximity.
+    """
+    if not parsed_name or not tmdb_title or tmdb_title == "unknown":
+        return 0.0
+
+    def _normalize(text: str) -> str:
+        text = str(text).lower()
+        text = re.sub(r"[^\w\s]", " ", text)
+        return " ".join(text.split())
+
+    norm_parsed = _normalize(parsed_name)
+    norm_tmdb = _normalize(tmdb_title)
+
+    if not norm_parsed or not norm_tmdb:
+        return 0.0
+
+    # 1. Sequence ratio
+    seq_ratio = difflib.SequenceMatcher(None, norm_parsed, norm_tmdb).ratio()
+
+    # 2. Token overlap & containment
+    tokens_p = set(norm_parsed.split())
+    tokens_t = set(norm_tmdb.split())
+    intersection = tokens_p & tokens_t
+    if intersection:
+        jaccard = len(intersection) / len(tokens_p | tokens_t)
+        containment = len(intersection) / min(len(tokens_p), len(tokens_t))
+        token_score = max(jaccard, 0.85 * containment)
+    else:
+        token_score = 0.0
+
+    title_similarity = max(seq_ratio, token_score, 0.5 * seq_ratio + 0.5 * token_score)
+
+    # 3. Year factor
+    year_factor = 1.0
+    p_year_clean = str(parsed_year).strip() if parsed_year and str(parsed_year).strip() not in ("None", "unknown", "") else None
+    t_year_clean = str(tmdb_year).strip() if tmdb_year and str(tmdb_year).strip() not in ("None", "unknown", "") else None
+
+    if p_year_clean and t_year_clean:
+        try:
+            py_int = int(p_year_clean[:4])
+            ty_int = int(t_year_clean[:4])
+            diff = abs(py_int - ty_int)
+            if diff == 0:
+                year_factor = 1.0
+            elif diff == 1:
+                year_factor = 0.95
+            elif diff <= 2:
+                year_factor = 0.85
+            else:
+                year_factor = max(0.4, 1.0 - (diff * 0.1))
+        except (ValueError, TypeError):
+            year_factor = 0.90
+    elif p_year_clean and not t_year_clean:
+        year_factor = 0.85
+    elif not p_year_clean and t_year_clean:
+        year_factor = 0.90
+    else:
+        year_factor = 0.90
+
+    final_score = title_similarity * year_factor
+    return round(min(1.0, max(0.0, final_score)), 2)
+
+
+def correct_movie_filename(file, ai_result=None):
     
     new_filename = None
 
@@ -310,18 +380,46 @@ def correct_movie_filename(file):
         name = file['Parse'][0]
         year = file['Parse'][1]
 
-        resolution,quality = parse_resolution_quality(file['Parse'][2],file['Parse'][3],file['Clean'][2],file['Clean'][3],file['Path'])
-        
-        success, title, year, original_language = api.api_call(name, year, "en-US", "movie")
-        
-        if not success: 
-            name = file['Clean'][0]
-            year = file['Clean'][1]
+        resolution, quality = parse_resolution_quality(
+            file['Parse'][2], file['Parse'][3],
+            file['Clean'][2], file['Clean'][3],
+            file['Path']
+        )
+
+        min_conf = getattr(config, 'TMDB_MIN_CONFIDENCE', 0.75)
+
+        if ai_result is not None:
+            success, title, year, original_language = ai_result[0], ai_result[1], ai_result[2], ai_result[3]
+        else:
+            success, title, tmdb_year, original_language = api.api_call(name, year, "en-US", "movie")
+            best_tmdb = (success, title, tmdb_year, original_language)
+            if success:
+                prob = compute_tmdb_match_probability(name, year, title, tmdb_year)
+                if prob < min_conf and ui.AI_FALLBACK_ENABLED:
+                    success = False
+
+            if not success: 
+                name = file['Clean'][0]
+                year = file['Clean'][1]
+                
+                clean_s, clean_t, clean_y, clean_l = api.api_call(name, year, "en-US", "movie")
+                if clean_s:
+                    prob_c = compute_tmdb_match_probability(name, year, clean_t, clean_y)
+                    if prob_c >= min_conf or not ui.AI_FALLBACK_ENABLED:
+                        success, title, tmdb_year, original_language = True, clean_t, clean_y, clean_l
+                        best_tmdb = (True, clean_t, clean_y, clean_l)
+                    else:
+                        success = False
+                
+                if not success and ui.AI_FALLBACK_ENABLED:
+                    ai_res = api.gemini_api_call(file)
+                    if ai_res and ai_res[0]:
+                        success, title, tmdb_year, original_language = True, ai_res[1], ai_res[2], ai_res[3]
+                    elif best_tmdb[0]:
+                        success, title, tmdb_year, original_language = best_tmdb
             
-            success, title, year, original_language = api.api_call(name, year, "en-US", "movie")
-            
-            if not success and ui.AI_FALLBACK_ENABLED:
-                success, title, year, original_language, _ = api.gemini_api_call(file)
+            if success:
+                year = tmdb_year
         
         if success and original_language in ["fr", "fr-FR"]:
             success_fr, title_fr, year_fr, _ = api.api_call(name, year, "fr-FR", "movie")
@@ -329,7 +427,7 @@ def correct_movie_filename(file):
                 title = title_fr 
                 year = year_fr
         
-        new_filename = generate_new_movie_filename(success,title,year,resolution,quality)
+        new_filename = generate_new_movie_filename(success, title, year, resolution, quality)
             
     except Exception as e:
         failed_file = file.get('File', 'Unknown File')
@@ -348,33 +446,60 @@ def correct_movie_filename(file):
 
     return new_filename
 
-def correct_tv_show_filename(file):
+
+def correct_tv_show_filename(file, ai_result=None):
 
     new_filename = None
     season = None
     episode = None
 
-    try :
-        name             = file['Parse'][0]
+    try:
+        name = file['Parse'][0]
 
-        season,episode = parse_season_episode(file['Parse'][2],file['Parse'][3],file['File'])
-        season,episode = format_season_and_episode(season,episode)
-        resolution,quality = parse_resolution_quality(file['Parse'][4],file['Parse'][5],file['Clean'][2],file['Clean'][3],file['Path'])
+        season, episode = parse_season_episode(file['Parse'][2], file['Parse'][3], file['File'])
+        season, episode = format_season_and_episode(season, episode)
+        resolution, quality = parse_resolution_quality(
+            file['Parse'][4], file['Parse'][5],
+            file['Clean'][2], file['Clean'][3],
+            file['Path']
+        )
         
-        success, title, _, original_language = api.api_call(name, None, "en-US", "tv")
-        if not success:
-            name             = file['Clean'][0]
-            
+        min_conf = getattr(config, 'TMDB_MIN_CONFIDENCE', 0.75)
+
+        if ai_result is not None:
+            success, title, _, original_language = ai_result[0], ai_result[1], ai_result[2], ai_result[3]
+        else:
             success, title, _, original_language = api.api_call(name, None, "en-US", "tv")
-            if not success and ui.AI_FALLBACK_ENABLED:
-                success, title, _, _, _ = api.gemini_api_call(file)
+            best_tmdb = (success, title, original_language)
+            if success:
+                prob = compute_tmdb_match_probability(name, None, title, None)
+                if prob < min_conf and ui.AI_FALLBACK_ENABLED:
+                    success = False
+
+            if not success:
+                name = file['Clean'][0]
+                clean_s, clean_t, _, clean_l = api.api_call(name, None, "en-US", "tv")
+                if clean_s:
+                    prob_c = compute_tmdb_match_probability(name, None, clean_t, None)
+                    if prob_c >= min_conf or not ui.AI_FALLBACK_ENABLED:
+                        success, title, original_language = True, clean_t, clean_l
+                        best_tmdb = (True, clean_t, clean_l)
+                    else:
+                        success = False
+
+                if not success and ui.AI_FALLBACK_ENABLED:
+                    ai_res = api.gemini_api_call(file)
+                    if ai_res and ai_res[0]:
+                        success, title, original_language = True, ai_res[1], ai_res[3]
+                    elif best_tmdb[0]:
+                        success, title, original_language = best_tmdb
             
         if success and original_language in ["fr", "fr-FR"]:
             success_fr, title_fr, _, _ = api.api_call(name, None, "fr-FR", "tv")
             if success_fr:
                 title = title_fr
 
-        new_filename = generate_new_tvshow_filename(success,title,season,episode,resolution,quality)
+        new_filename = generate_new_tvshow_filename(success, title, season, episode, resolution, quality)
     
     except Exception as e:
         failed_file = file.get('File', 'Unknown File')
@@ -395,15 +520,45 @@ def correct_tv_show_filename(file):
 
     return new_filename, season, episode
 
+def sanitize_filename(name: str) -> str:
+    """Sanitizes a title or filename component against directory traversal and forbidden characters."""
+    if not name or not isinstance(name, str):
+        return ""
+
+    # Replace colons with standard title separator " -"
+    sanitized = name.replace(":", " -")
+
+    # Remove directory traversal segments (e.g. "../" or "..\" or standalone "..")
+    sanitized = re.sub(r'(?:\.\.[\\/]+)+', '', sanitized)
+    sanitized = re.sub(r'\.{2,}', '', sanitized)
+
+    # Replace illegal filesystem characters (\ / * ? " < > | and null bytes) with hyphen
+    sanitized = re.sub(r'[\x00\\/*?"<>|]', '-', sanitized)
+
+    # Collapse multiple consecutive hyphens or spaces
+    sanitized = re.sub(r'-{2,}', '-', sanitized)
+    sanitized = re.sub(r'\s+', ' ', sanitized)
+
+    # Strip leading/trailing dots, hyphens, and whitespace
+    sanitized = sanitized.strip('. -')
+
+    return sanitized
+
 def generate_new_movie_filename(success, title, year, resolution, quality):
     is_title_valid = title and str(title).strip()
 
     if not success or not is_title_valid :
         raise LookupError("API calls failed or essential metadata (Title) is missing/empty.")
 
-    new_name = title.replace(':', ' -')
+    safe_title = sanitize_filename(title)
+    if not safe_title:
+        raise LookupError("Title contains only invalid characters.")
+
+    new_name = safe_title
     if year and str(year).strip():
-        new_name += f" ({year})"
+        safe_year = re.sub(r'[^0-9]', '', str(year).strip())
+        if safe_year:
+            new_name += f" ({safe_year})"
 
     # quality and resolution
     metadata_parts = []
@@ -424,7 +579,11 @@ def generate_new_tvshow_filename(success, title, season, episode, resolution=Non
     if not success or not is_title_valid or not is_season_valid or not is_episode_valid:
         raise LookupError("API calls failed or essential metadata (Title, Season, or Episode) is missing/empty.")
 
-    new_name = title.replace(':', ' -')
+    safe_title = sanitize_filename(title)
+    if not safe_title:
+        raise LookupError("Title contains only invalid characters.")
+
+    new_name = safe_title
 
     # season and episode
     s_padded = str(season).zfill(2)
@@ -517,8 +676,7 @@ def clean_filename(filename):
     clean_title = re.sub(r'\s+', ' ', clean_title).strip()
     
     # remove torrent file informations
-    for tag in TAGS:
-        clean_title = re.sub(rf'(?i)\b{tag}\b', '', clean_title)
+    clean_title = tag_manager.clean_text(clean_title)
         
     # clean spaces
     clean_title = clean_title.replace('.', ' ').replace('_', ' ').replace('-', ' ')
@@ -557,14 +715,61 @@ def get_corrected_media_filenames(messy_data_table, clean_data_table):
     
     new_clean_data_rows = []
     failed_files = []
-    
+    ai_results = {}
+
+    if ui.AI_FALLBACK_ENABLED:
+        ai_pending_items = []
+        min_conf = getattr(config, "TMDB_MIN_CONFIDENCE", 0.75)
+
+        for _, file in messy_data_table.iterrows():
+            m_type = file.get("Media")
+            if m_type not in ("movie", "tv"):
+                continue
+
+            needs_fallback = False
+            if m_type == "movie":
+                p_name, p_year = file['Parse'][0], file['Parse'][1]
+                s, t, y, _ = api.api_call(p_name, p_year, "en-US", "movie")
+                prob = compute_tmdb_match_probability(p_name, p_year, t, y) if s else 0.0
+                if not (s and prob >= min_conf):
+                    c_name, c_year = file['Clean'][0], file['Clean'][1]
+                    s_c, t_c, y_c, _ = api.api_call(c_name, c_year, "en-US", "movie")
+                    prob_c = compute_tmdb_match_probability(c_name, c_year, t_c, y_c) if s_c else 0.0
+                    if not (s_c and prob_c >= min_conf):
+                        needs_fallback = True
+            elif m_type == "tv":
+                p_name = file['Parse'][0]
+                s, t, _, _ = api.api_call(p_name, None, "en-US", "tv")
+                prob = compute_tmdb_match_probability(p_name, None, t, None) if s else 0.0
+                if not (s and prob >= min_conf):
+                    c_name = file['Clean'][0]
+                    s_c, t_c, _, _ = api.api_call(c_name, None, "en-US", "tv")
+                    prob_c = compute_tmdb_match_probability(c_name, None, t_c, None) if s_c else 0.0
+                    if not (s_c and prob_c >= min_conf):
+                        needs_fallback = True
+
+            if needs_fallback:
+                ai_pending_items.append(file)
+
+        if ai_pending_items:
+            ui.print_log(f"🤖 Queuing {len(ai_pending_items)} files for AI batch fallback...\n")
+            BATCH_SIZE = 25
+            for i in range(0, len(ai_pending_items), BATCH_SIZE):
+                chunk = ai_pending_items[i : i + BATCH_SIZE]
+                chunk_dicts = [f.to_dict() if hasattr(f, "to_dict") else dict(f) for f in chunk]
+                batch_res = api.execute_ai_batch_with_failover(chunk_dicts)
+                for file_obj, res in zip(chunk, batch_res):
+                    ai_results[file_obj['File']] = res
+
     for _, file in messy_data_table.iterrows():
+        f_name = file['File']
+        ai_res = ai_results.get(f_name)
 
         if file['Media'] == "movie": 
-            corrected_name = correct_movie_filename(file) 
+            corrected_name = correct_movie_filename(file, ai_result=ai_res) 
             season, episode = None, None
         elif file['Media'] == "tv": 
-            corrected_name, season, episode = correct_tv_show_filename(file) 
+            corrected_name, season, episode = correct_tv_show_filename(file, ai_result=ai_res) 
         else:
             ui.print_log(f"Ignored : {file['File']}\n")
             continue

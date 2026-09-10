@@ -202,6 +202,7 @@ def sort_media_files(clean_data_table):
             tv_show_name = re.sub(r'\s*(?:-\s*)?S\d+E\d+.*$', '', str(movie['Corrected']), flags=re.IGNORECASE).strip()
             tv_show_name = re.sub(r'\s*\[.*?\]', '', tv_show_name).strip()
             tv_show_name = re.sub(r'\s*\(\d{4}\)$', '', tv_show_name).strip()
+            tv_show_name = utils.sanitize_filename(tv_show_name) or "Unknown Show"
 
             folder_path = Path(TV_SHOWS_FOLDER) / tv_show_name / season_folder
             folder_path.mkdir(parents=True, exist_ok=True)
@@ -210,7 +211,11 @@ def sort_media_files(clean_data_table):
         else:
             ui.print_log(f"⏭ Ignored (not found) : {corrected_name}")
             continue
-        
+
+        base_dir = Path(MOVIES_FOLDER if media == "movie" else TV_SHOWS_FOLDER).resolve()
+        if not new_path.resolve().is_relative_to(base_dir):
+            raise PermissionError(f"Path traversal detected: {new_path}")
+
         paths.append([old_path, new_path])
 
     if not paths:

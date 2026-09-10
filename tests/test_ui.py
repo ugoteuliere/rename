@@ -107,6 +107,30 @@ def test_parse_arguments_ai_missing_key(monkeypatch):
         with pytest.raises(SystemExit):
             ui.parse_arguments()
 
+
+def test_parse_arguments_learn_flags(monkeypatch):
+    with patch("src.ui.GEMINI_API_KEY", "fake_key"):
+        monkeypatch.setattr(sys, "argv", ["main.py", "-L"])
+        args = ui.parse_arguments()
+        assert args.learn is True
+        assert ui.LEARN_ENABLED is True
+        assert ui.AI_FALLBACK_ENABLED is True
+
+        monkeypatch.setattr(sys, "argv", ["main.py", "--learn"])
+        args = ui.parse_arguments()
+        assert args.learn is True
+        assert ui.LEARN_ENABLED is True
+        assert ui.AI_FALLBACK_ENABLED is True
+
+
+def test_parse_arguments_learn_missing_key(monkeypatch):
+    monkeypatch.setattr(ui, "GEMINI_API_KEY", None)
+    with patch.object(ConfigManager, "GEMINI_API_KEY", new_callable=PropertyMock, return_value=None):
+        monkeypatch.setattr(sys, "argv", ["main.py", "-L"])
+        with pytest.raises(SystemExit):
+            ui.parse_arguments()
+
+
 def test_parse_arguments_config_subcommand(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["main.py", "configure"])
     args = ui.parse_arguments()
@@ -114,7 +138,7 @@ def test_parse_arguments_config_subcommand(monkeypatch):
 
 def test_parse_arguments_config_precedence(monkeypatch, tmp_path):
     test_ini = tmp_path / "prec.ini"
-    test_ini.write_text("[options]\nbypass = y\nai = y\nlog = y\nverbose = y\n", encoding="utf-8")
+    test_ini.write_text("[options]\nbypass = y\nai = y\nlearn = y\nlog = y\nverbose = y\n", encoding="utf-8")
     cm = ConfigManager(custom_path=str(test_ini))
 
     with patch("src.ui.config", cm), patch("src.ui.GEMINI_API_KEY", "fake_gemini"):
@@ -122,6 +146,7 @@ def test_parse_arguments_config_precedence(monkeypatch, tmp_path):
         args = ui.parse_arguments()
         assert ui.BYPASS_ENABLED is True
         assert ui.AI_FALLBACK_ENABLED is True
+        assert ui.LEARN_ENABLED is True
         assert ui.LOG_ENABLED is True
         assert ui.VERBOSE_ENABLED is True
 
@@ -231,18 +256,29 @@ def test_parse_arguments_resolution_quality_missing_ffprobe(monkeypatch):
 
 def test_parse_arguments_notify_flags_success(monkeypatch):
     with patch("src.ui.MAIL", "user@gmail.com"), patch("src.ui.MAIL_PSWD", "secret"):
-        monkeypatch.setattr(sys, "argv", ["main.py", "--notify-success", "--notify-error"])
+        monkeypatch.setattr(sys, "argv", ["main.py", "--notify-success", "--notify-error", "-t"])
         args = ui.parse_arguments()
         assert args.notify_success is True
         assert args.notify_error is True
+        assert args.notify_tag is True
         assert ui.NOTIFY_SUCCESS_ENABLED is True
         assert ui.NOTIFY_ERROR_ENABLED is True
+        assert ui.NOTIFY_TAG_ENABLED is True
+
+        monkeypatch.setattr(sys, "argv", ["main.py", "--notify-tag"])
+        args = ui.parse_arguments()
+        assert args.notify_tag is True
+        assert ui.NOTIFY_TAG_ENABLED is True
 
 def test_parse_arguments_notify_flags_missing_credentials(monkeypatch):
     with patch("src.ui.MAIL", None), patch("src.ui.MAIL_PSWD", None), \
          patch.object(ConfigManager, "MAIL", new_callable=PropertyMock, return_value=None), \
          patch.object(ConfigManager, "MAIL_PSWD", new_callable=PropertyMock, return_value=None):
         monkeypatch.setattr(sys, "argv", ["main.py", "--notify-success"])
+        with pytest.raises(SystemExit):
+            ui.parse_arguments()
+
+        monkeypatch.setattr(sys, "argv", ["main.py", "-t"])
         with pytest.raises(SystemExit):
             ui.parse_arguments()
 

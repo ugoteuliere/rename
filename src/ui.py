@@ -26,6 +26,7 @@ MAIL_PSWD = getattr(config, 'MAIL_PSWD', None)
 LOG_ENABLED = False
 MAIL_ENABLED = False
 AI_FALLBACK_ENABLED = False
+LEARN_ENABLED = False
 BYPASS_ENABLED = False
 VERBOSE_ENABLED = False
 SIMULATE_ENABLED = False
@@ -33,12 +34,13 @@ RESOLUTION_ENABLED = False
 QUALITY_ENABLED = False
 NOTIFY_SUCCESS_ENABLED = False
 NOTIFY_ERROR_ENABLED = False
+NOTIFY_TAG_ENABLED = False
 AUTONOMOUS_ENABLED = False
 POLLING_INTERVAL = 15
 
 def parse_arguments():
-    global LOG_ENABLED, MAIL_ENABLED, AI_FALLBACK_ENABLED, BYPASS_ENABLED, VERBOSE_ENABLED, SIMULATE_ENABLED
-    global RESOLUTION_ENABLED, QUALITY_ENABLED, NOTIFY_SUCCESS_ENABLED, NOTIFY_ERROR_ENABLED
+    global LOG_ENABLED, MAIL_ENABLED, AI_FALLBACK_ENABLED, LEARN_ENABLED, BYPASS_ENABLED, VERBOSE_ENABLED, SIMULATE_ENABLED
+    global RESOLUTION_ENABLED, QUALITY_ENABLED, NOTIFY_SUCCESS_ENABLED, NOTIFY_ERROR_ENABLED, NOTIFY_TAG_ENABLED
     global AUTONOMOUS_ENABLED, POLLING_INTERVAL
 
     description_text = (
@@ -53,6 +55,8 @@ def parse_arguments():
         "  python main.py -s                 (Simulation mode: preview changes without modifying disk)\n"
         "  python main.py -a                 (Autonomous mode: continuous background polling)\n"
         "  python main.py -a --interval 10   (Autonomous mode with 10-minute polling)\n"
+        "  python main.py -L                 (Enables AI keyword learning)\n"
+        "  python main.py -t                 (Sends email notification when an AI keyword is learned)\n"
         "  python main.py -R -q              (Appends resolution & quality tags)\n"
         "  python main.py --notify-success   (Sends email notification on success)\n"
         "  python main.py configure          (Interactive configuration wizard)\n"
@@ -80,6 +84,10 @@ def parse_arguments():
                             help="Detect and append video encoding/quality tags (e.g. [FullHD BluRay]).")
     proc_group.add_argument("-i", "--ai", action="store_true", 
                             help="Enables the Gemini AI fallback to intelligently parse and correct highly obfuscated filenames.")
+    proc_group.add_argument("-L", "--learn", action="store_true",
+                            help="Enable AI keyword learning to discover and save missing tags from Gemini.")
+    proc_group.add_argument("--provider", choices=["auto", "gemini", "groq", "openrouter", "cloudflare"], default=None,
+                            help="Specify the AI cloud provider to use for fallback parsing (auto, gemini, groq, openrouter, cloudflare).")
     proc_group.add_argument("--path", type=str, default=None,
                             help="Target a specific folder as source (overrides downloads folder, or renames in-place with -r).")
 
@@ -98,6 +106,8 @@ def parse_arguments():
                             help="Send an email notification on successful media processing.")
     auto_group.add_argument("--notify-error", action="store_true",
                             help="Send an email notification when a processing error occurs.")
+    auto_group.add_argument("-t", "--notify-tag", action="store_true",
+                            help="Send an email notification when a new AI keyword tag is discovered and saved.")
 
     # Subparsers for config commands
     subparsers = parser.add_subparsers(dest="subcommand")
@@ -107,6 +117,7 @@ def parse_arguments():
         help="View and manage configuration settings (INI file & environment variables).",
         formatter_class=argparse.RawTextHelpFormatter
     )
+    config_parser.add_argument("-g", "--gui", action="store_true", help="Launch modern graphical configuration interface (GUI).")
     config_parser.add_argument("-l", "--list", action="store_true", help="List all configured settings and their sources.")
     config_parser.add_argument("--show-secrets", action="store_true", help="Display sensitive values (API keys, passwords) without masking.")
     config_parser.add_argument("--get", metavar="KEY", help="Get the value for a specific setting (e.g. paths.movies_folder, api.tmdb_api_key).")
@@ -114,7 +125,18 @@ def parse_arguments():
     config_parser.add_argument("--unset", metavar="KEY", help="Remove a configuration setting from the INI file.")
     config_parser.add_argument("--path", action="store_true", help="Display the path of the active configuration file.")
 
-    subparsers.add_parser("configure", help="Launch interactive configuration wizard.")
+    configure_parser = subparsers.add_parser(
+        "configure",
+        help="Launch interactive configuration wizard or GUI.",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    configure_parser.add_argument("-g", "--gui", action="store_true", help="Launch modern graphical configuration tool (GUI).")
+    configure_parser.add_argument("--paths", action="store_true", help="Configure storage and library folders directly.")
+    configure_parser.add_argument("--ai", action="store_true", help="Configure API keys and Cloud AI providers directly.")
+    configure_parser.add_argument("--email", action="store_true", help="Configure email alerts and SMTP credentials directly.")
+    configure_parser.add_argument("--options", action="store_true", help="Configure runtime and automation options directly.")
+    configure_parser.add_argument("--video", action="store_true", help="Configure video stream options directly.")
+    configure_parser.add_argument("--full", action="store_true", help="Run full step-by-step setup wizard without menu.")
 
     args = parser.parse_args()
 
@@ -143,8 +165,9 @@ def parse_arguments():
     else:
         POLLING_INTERVAL = getattr(config, 'POLLING_INTERVAL', 15)
 
+    LEARN_ENABLED = bool(args.learn or getattr(config, 'LEARN', False))
+    AI_FALLBACK_ENABLED = bool(args.ai or getattr(config, 'AI', False) or LEARN_ENABLED)
     BYPASS_ENABLED = bool(args.bypass or getattr(config, 'BYPASS', False) or AUTONOMOUS_ENABLED)
-    AI_FALLBACK_ENABLED = bool(args.ai or getattr(config, 'AI', False))
     LOG_ENABLED = bool(args.log or getattr(config, 'LOG', False) or AUTONOMOUS_ENABLED)
     VERBOSE_ENABLED = bool(args.verbose or getattr(config, 'VERBOSE', False))
     SIMULATE_ENABLED = bool(args.simulate)
@@ -152,12 +175,13 @@ def parse_arguments():
     QUALITY_ENABLED = bool(args.quality or getattr(config, 'QUALITY', False))
     NOTIFY_SUCCESS_ENABLED = bool(args.notify_success)
     NOTIFY_ERROR_ENABLED = bool(args.notify_error)
+    NOTIFY_TAG_ENABLED = bool(args.notify_tag)
 
     from src import utils as utils_module
     utils_module.RESOLUTION = RESOLUTION_ENABLED
     utils_module.QUALITY = QUALITY_ENABLED
 
-    if (args.notify_success or args.notify_error) and not MAIL_ENABLED:
+    if (args.notify_success or args.notify_error or args.notify_tag) and not MAIL_ENABLED:
         parser.error(
             "❌ Missing configuration: Email notification flags require 'mail' and 'mail_pswd' to be configured in [mail].\n\n"
             "💡 How to fix:\n"
@@ -176,18 +200,43 @@ def parse_arguments():
             "  Guide: docs/documentation.md#ffmpeg-setup"
         )
 
+    if getattr(args, "provider", None):
+        config.AI_PROVIDER = args.provider
+
     if AI_FALLBACK_ENABLED:
+        available_ai = []
         current_gemini = GEMINI_API_KEY or getattr(config, 'GEMINI_API_KEY', None)
-        if not current_gemini:
+        current_groq = getattr(config, 'GROQ_API_KEY', None)
+        current_openrouter = getattr(config, 'OPENROUTER_API_KEY', None)
+        current_cf_tok = getattr(config, 'CLOUDFLARE_API_TOKEN', None)
+        current_cf_acc = getattr(config, 'CLOUDFLARE_ACCOUNT_ID', None)
+
+        if current_gemini:
+            available_ai.append("gemini")
+        if current_groq:
+            available_ai.append("groq")
+        if current_openrouter:
+            available_ai.append("openrouter")
+        if current_cf_tok and current_cf_acc:
+            available_ai.append("cloudflare")
+
+        if not available_ai:
             parser.error(
-                "❌ Missing configuration: The '--ai' (-i) option requires 'GEMINI_API_KEY' to be configured.\n\n"
+                "❌ Missing configuration: The '--ai' (-i) and '--learn' (-L) options require an AI Cloud Provider API key to be configured (Gemini, Groq, OpenRouter, or Cloudflare).\n\n"
                 "💡 How to fix:\n"
                 "  1. Run the configuration wizard:\n"
                 "     python main.py configure\n"
                 "  2. Or set the key via CLI:\n"
                 "     python main.py config --set api.gemini_api_key \"<your_gemini_key>\"\n"
-                "  3. Or use the environment variable:\n"
-                "     export RENAME_GEMINI_API_KEY=\"<your_gemini_key>\""
+                "     python main.py config --set api.groq_api_key \"<your_groq_key>\"\n"
+                "  3. Or use environment variables:\n"
+                "     export RENAME_GEMINI_API_KEY=\"<your_gemini_key>\"\n"
+                "     export RENAME_GROQ_API_KEY=\"<your_groq_key>\""
+            )
+
+        if args.provider and args.provider != "auto" and args.provider not in available_ai:
+            parser.error(
+                f"❌ Missing configuration: AI provider '{args.provider}' requested via '--provider', but its credentials are not configured."
             )
 
     return args
@@ -195,8 +244,25 @@ def parse_arguments():
 def handle_config_command(args):
     from src.config import config
     
+    if getattr(args, "gui", None) is True:
+        config.run_gui()
+        return
+
     if getattr(args, "subcommand", None) == "configure":
-        config.run_wizard()
+        section = None
+        if getattr(args, "paths", None) is True:
+            section = "paths"
+        elif getattr(args, "ai", None) is True:
+            section = "ai"
+        elif getattr(args, "email", None) is True:
+            section = "email"
+        elif getattr(args, "options", None) is True:
+            section = "options"
+        elif getattr(args, "video", None) is True:
+            section = "video"
+        
+        run_full = getattr(args, "full", None) is True
+        config.run_wizard(section=section, interactive_menu=(not run_full and section is None))
         return
 
     if getattr(args, "path", False):
