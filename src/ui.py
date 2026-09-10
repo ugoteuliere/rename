@@ -372,7 +372,8 @@ def print_log(message):
         hour = datetime.now().strftime("%H:%M:%S")
         with open(path, "a", encoding="utf-8") as f:
             f.write(f"[{hour}] {str(message)}\n")
-    print(message)
+    else:
+        print(message)
 
 def print_error(message, logs):
     if VERBOSE_ENABLED:

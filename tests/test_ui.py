@@ -334,9 +334,10 @@ def test_logging_functions(tmp_path, monkeypatch):
 
     # print_log with LOG_ENABLED
     monkeypatch.setattr(ui, "LOG_ENABLED", True)
-    with patch("builtins.open", mock_open()) as mock_f:
+    with patch("builtins.open", mock_open()) as mock_f, patch("builtins.print") as mock_print:
         ui.print_log("file log message")
         mock_f.assert_called()
+        mock_print.assert_not_called()
     
     # rich_print_log without LOG_ENABLED
     monkeypatch.setattr(ui, "LOG_ENABLED", False)
