@@ -45,7 +45,7 @@ def parse_arguments():
 
     description_text = (
         "🎬 Media Organizer & Renamer\n"
-        "Automatically parses, renames, and sorts messy video files using the TMDB and Gemini APIs."
+        "Automatically parses, renames, and sorts messy video files using TMDB and Multi-Cloud AI (Gemini, Groq, OpenRouter, Cloudflare)."
     )
     
     epilog_text = (
@@ -387,9 +387,9 @@ def rich_print_log(*args, **kwargs):
         with console_capture.capture() as capture:
             console_capture.print(*args, **kwargs)
             
-        texte_brut = capture.get()
-        if texte_brut.strip():
-            print_log("\n" + texte_brut.rstrip("\n"))
+        raw_text = capture.get()
+        if raw_text.strip():
+            print_log("\n" + raw_text.rstrip("\n"))
     else:
         console = Console()
         console.print(*args, **kwargs)

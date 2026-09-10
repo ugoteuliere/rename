@@ -32,6 +32,30 @@ config.ini
 log/
 *.log
 
+# Operating System artifacts
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Local tag overrides & learned tags (shipped data/tags.json remains tracked)
+custom_tags.json
+gemini_tags.json
+
+# Python distribution & packaging
+*.egg-info/
+*.egg
+.eggs/
+
+# Temporary & backup files
+*.tmp
+*.bak
+scratch/
+
 # IDE & Editor settings
 .vscode/
 .idea/

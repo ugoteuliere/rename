@@ -378,7 +378,7 @@ python main.py -a
 # Custom polling interval (e.g. 5 minutes)
 python main.py -a --interval 5
 ```
-Autonomous mode automatically enables `-b` (`bypass`) and `-l` (`log`), skips in-progress downloads (`.crdownload`, `.part`, `.tmp`), and terminates cleanly on `SIGINT` / `Ctrl+C`.
+Autonomous mode automatically enables `-b` (`bypass`) and `-l` (`log`), skips in-progress downloads (`.crdownload`, `.part`, `.tmp`), and terminates cleanly on `SIGINT` / `Ctrl+C`. In autonomous mode, logs are written exclusively to the daily log file (`log/YYYY-MM-DD.txt`) to keep the terminal completely clean and silent for headless background operation.
 
 ---
 

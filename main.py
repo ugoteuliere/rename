@@ -25,7 +25,7 @@ def process_media(args, autonomous=False, cycle=1):
             ui.print_log(f"Check {cycle} : No media to process")
         return 0
 
-    # find correct names
+    # Match metadata via TMDB and AI fallback to resolve official filenames
     clean_data_table = utils.get_corrected_media_filenames(messy_data_table, clean_data_table)
 
     if clean_data_table.empty or not utils.has_files_to_rename(clean_data_table):
@@ -45,7 +45,7 @@ def process_media(args, autonomous=False, cycle=1):
         ui.rich_print_log("\n[bold yellow]🔍 Simulation mode complete: No files were renamed or moved on disk.[/bold yellow]\n")
         return 0
 
-    # Confirmation & Renaming
+    # User confirmation and physical rename on disk
     ui.user_confirmation("rename the files")
     clean_data_table = files.rename_media_files(clean_data_table)
 
@@ -141,10 +141,10 @@ def run_autonomous_loop(args, max_cycles=None, stop_event=None):
 
 def main():
     try:
-        # verify environment
+        # Parse command line arguments and options
         args = ui.parse_arguments()
         
-        # handle gui flag or config subcommands
+        # Dispatch standalone GUI launcher or CLI config commands
         if getattr(args, "gui", False) is True:
             from src.config import config
             config.run_gui()
