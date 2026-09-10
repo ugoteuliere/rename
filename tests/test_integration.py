@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import shutil
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -502,3 +503,166 @@ def test_integration_config_cli_subcommands(media_env, monkeypatch, capsys):
     main.main()
     cm.load()
     assert cm.parser.has_option("options", "polling_interval") is False
+
+
+def test_integration_resolution_and_quality_tags(media_env, monkeypatch):
+    """End-to-end integration test: -R and -q append resolution and quality tags to renamed files on disk."""
+    downloads = media_env["downloads"]
+    movies = media_env["movies"]
+
+    sample_movie = downloads / "Dune.Part.Two.2024.1080p.BluRay.x264.mkv"
+    sample_movie.write_text("movie data", encoding="utf-8")
+
+    def mock_tmdb(name, year, language, media_type):
+        return [True, "Dune Part Two", "2024", "movie"]
+
+    real_which = shutil.which
+    monkeypatch.setattr(
+        "shutil.which",
+        lambda cmd: "/usr/bin/ffprobe" if "ffprobe" in cmd else real_which(cmd)
+    )
+    monkeypatch.setattr("src.api.api_call", mock_tmdb)
+    monkeypatch.setattr(sys, "argv", ["main.py", "-R", "-q", "-b"])
+
+    exit_code = main.main()
+    assert exit_code == 0
+
+    expected_file = movies / "Dune Part Two (2024) [Blu-ray FullHD].mkv"
+    assert expected_file.is_file()
+    assert expected_file.read_text(encoding="utf-8") == "movie data"
+    assert not sample_movie.exists()
+
+
+def test_integration_interactive_confirmation_accepted(media_env, monkeypatch):
+    """End-to-end integration test: Interactive user confirmation (pressing Enter) executes renames."""
+    downloads = media_env["downloads"]
+    movies = media_env["movies"]
+    cm = media_env["config_manager"]
+    cm.set("options.bypass", "false")
+
+    sample_movie = downloads / "Oppenheimer.2023.720p.mkv"
+    sample_movie.write_text("oppenheimer data", encoding="utf-8")
+
+    def mock_tmdb(name, year, language, media_type):
+        return [True, "Oppenheimer", "2023", "movie"]
+
+    monkeypatch.setattr("src.api.api_call", mock_tmdb)
+    monkeypatch.setattr(sys, "argv", ["main.py"])  # Notice: NO -b / --bypass!
+    monkeypatch.setattr("builtins.input", lambda prompt="": "")
+
+    exit_code = main.main()
+    assert exit_code == 0
+    assert (movies / "Oppenheimer (2023).mkv").is_file()
+    assert not sample_movie.exists()
+
+
+def test_integration_interactive_confirmation_rejected(media_env, monkeypatch):
+    """End-to-end integration test: Cancelling via Ctrl+C (KeyboardInterrupt) exits cleanly without modifying files."""
+    downloads = media_env["downloads"]
+    movies = media_env["movies"]
+    cm = media_env["config_manager"]
+    cm.set("options.bypass", "false")
+
+    sample_movie = downloads / "Oppenheimer.2023.720p.mkv"
+    sample_movie.write_text("oppenheimer data", encoding="utf-8")
+
+    def mock_tmdb(name, year, language, media_type):
+        return [True, "Oppenheimer", "2023", "movie"]
+
+    def mock_cancel(prompt=""):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr("src.api.api_call", mock_tmdb)
+    monkeypatch.setattr(sys, "argv", ["main.py"])  # NO -b!
+    monkeypatch.setattr("builtins.input", mock_cancel)
+
+    with pytest.raises(SystemExit) as exc:
+        main.main()
+    assert exc.value.code == 1
+    assert sample_movie.is_file()
+    assert not (movies / "Oppenheimer (2023).mkv").exists()
+
+
+def test_integration_notify_success_flag(media_env, monkeypatch):
+    """End-to-end integration test: --notify-success sends email upon successful file processing."""
+    downloads = media_env["downloads"]
+    movies = media_env["movies"]
+
+    sample_movie = downloads / "Gladiator.2000.mkv"
+    sample_movie.write_text("gladiator content", encoding="utf-8")
+
+    def mock_tmdb(name, year, language, media_type):
+        return [True, "Gladiator", "2000", "movie"]
+
+    monkeypatch.setattr("src.api.api_call", mock_tmdb)
+    monkeypatch.setattr(sys, "argv", ["main.py", "-b", "--notify-success"])
+
+    with patch("src.mail.send_media_success_email") as mock_mail:
+        exit_code = main.main()
+        assert exit_code == 0
+        mock_mail.assert_called_once()
+        assert "Gladiator (2000).mkv" in mock_mail.call_args.kwargs.get("media_name", "")
+
+
+def test_integration_notify_error_flag(media_env, monkeypatch):
+    """End-to-end integration test: --notify-error sends error notification when an exception occurs."""
+    downloads = media_env["downloads"]
+    sample_movie = downloads / "Broken.2020.mkv"
+    sample_movie.write_text("data", encoding="utf-8")
+
+    def mock_tmdb(name, year, language, media_type):
+        return [True, "Broken", "2020", "movie"]
+
+    def mock_rename_fail(df):
+        raise RuntimeError("Simulated disk write failure")
+
+    monkeypatch.setattr("src.api.api_call", mock_tmdb)
+    monkeypatch.setattr("src.files.rename_media_files", mock_rename_fail)
+    monkeypatch.setattr(sys, "argv", ["main.py", "-b", "--notify-error"])
+
+    with patch("src.mail.send_error_email") as mock_err_mail, pytest.raises(SystemExit) as exc:
+        main.main()
+    assert exc.value.code == 1
+    mock_err_mail.assert_called_once()
+
+
+def test_integration_logging_flag(media_env, monkeypatch, tmp_path):
+    """End-to-end integration test: -l activates file logging in log directory."""
+    downloads = media_env["downloads"]
+    sample_movie = downloads / "LogTest.2021.mkv"
+    sample_movie.write_text("data", encoding="utf-8")
+
+    custom_log = tmp_path / "custom_log"
+    custom_log.mkdir(parents=True, exist_ok=True)
+
+    def mock_tmdb(name, year, language, media_type):
+        return [True, "LogTest", "2021", "movie"]
+
+    monkeypatch.setattr("src.api.api_call", mock_tmdb)
+    monkeypatch.setattr(sys, "argv", ["main.py", "-l", "-s", "-b"])
+    monkeypatch.setattr("src.ui.get_log_dir", lambda: custom_log)
+
+    exit_code = main.main()
+    assert exit_code == 0
+    assert custom_log.is_dir()
+    log_files = list(custom_log.glob("*.txt"))
+    assert len(log_files) >= 1
+
+
+def test_integration_top_level_gui_entrypoint(monkeypatch):
+    """End-to-end integration test: --gui directly launches the configuration GUI."""
+    monkeypatch.setattr(sys, "argv", ["main.py", "--gui"])
+    with patch("src.config.config.run_gui") as mock_gui:
+        exit_code = main.main()
+        assert exit_code == 0
+        mock_gui.assert_called_once()
+
+
+def test_integration_configure_subcommands_dispatch(monkeypatch):
+    """End-to-end integration test: configure --options / --paths dispatches cleanly."""
+    monkeypatch.setattr(sys, "argv", ["main.py", "configure", "--options"])
+    with patch("src.config.ConfigManager.run_wizard") as mock_wizard:
+        exit_code = main.main()
+        assert exit_code == 0
+        mock_wizard.assert_called_once_with(section="options", interactive_menu=False)
+

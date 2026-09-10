@@ -243,23 +243,23 @@ def test_file_impossible_to_rename_and_mail():
     # --- 1. FILMS STANDARDS ---
     ("Inception.2010.1080p.BluRay.x264.VFF.AC3-GROUP.mkv", "Inception", "2010"),
     ("The.Matrix.1999.REMASTERED.2160p.UHD.BluRay.x265.10bit.HDR.TrueHD.7.1.Atmos.MULTI.SUBFRENCH-RLS.mp4", "The Matrix", "1999"),
-    ("Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.HEVC.VOSTFR-TEAM.mkv", "Dune Part Two", "2024"), # Tirets remplacés par des espaces par ta fonction
+    ("Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.HEVC.VOSTFR-TEAM.mkv", "Dune Part Two", "2024"), # Hyphens replaced with spaces
     ("Interstellar 2014 IMAX 1080p BDRip x264 DTS 5.1 TRUEFRENCH-FRG.avi", "Interstellar", "2014"),
     ("The.Dark.Knight.2008.720p.HDLight.x264.AC3.VF.mkv", "The Dark Knight", "2008"),
     ("Avatar.The.Way.of.Water.2022.4K.HDR.WEB-DL.x265.EAC3.5.1.MULTI.VFF-GRP.mkv", "Avatar The Way of Water", "2022"),
     ("Pulp.Fiction.1994.1080p.BluRay.Remux.AVC.DTS-HD.MA.5.1.MULTI.VOSTFR-TAG.mkv", "Pulp Fiction", "1994"),
-    ("Fight_Club_1999_1080p_BrRip_x264_AAC_2.0_VF.mp4", "Fight Club", "1999"), # Underscores remplacés par des espaces
+    ("Fight_Club_1999_1080p_BrRip_x264_AAC_2.0_VF.mp4", "Fight Club", "1999"), # Underscores replaced with spaces
     ("Spider-Man.Across.the.Spider-Verse.2023.2160p.UHD.BluRay.x265.10bit.HDR.TrueFrench.DTS-HD.7.1-FW.mkv", "Spider Man Across the Spider Verse", "2023"),
     
-    # --- 2. SÉRIES TV (Ta fonction supprime actuellement le SxxExx) ---
-    ("Breaking.Bad.S01E01.Pilot.1080p.BluRay.x264.AC3.5.1.MULTI.VOSTFR-TV.mkv", "Breaking Bad Pilot", ""), # S01E01 effacé, Pas d'année
+    # --- 2. TV Series (Standard title cleaning without year) ---
+    ("Breaking.Bad.S01E01.Pilot.1080p.BluRay.x264.AC3.5.1.MULTI.VOSTFR-TV.mkv", "Breaking Bad Pilot", ""),
     ("Game.of.Thrones.S08E03.1080p.AMZN.WEB-DL.DDP5.1.x264.VFF-GRP.mkv", "Game of Thrones", ""),
     ("Stranger Things S04E01 2160p NF WEB-DL x265 10bit HDR DDP5.1 Atmos MULTI VF.mkv", "Stranger Things", ""),
     ("The.Boys.S03E06.Herogasm.1080p.WEB.H264.EAC3.5.1.VOSTFR-RLS.mkv", "The Boys Herogasm", ""),
     
-    # --- 3. DÉJÀ PROPRES (Pour vérifier que la fonction ne casse rien) ---
+    # --- 3. Already clean filenames (Verify idempotent cleaning) ---
     ("Arrival (2016).mkv", "Arrival", "2016"),
-    ("A Knight of the Seven Kingdoms S01E01.mkv", "A Knight of the Seven Kingdoms", ""), # S01E01 sera effacé par ta regex
+    ("A Knight of the Seven Kingdoms S01E01.mkv", "A Knight of the Seven Kingdoms", ""),
     
     # Standard domain with 'www.'
     ("Avatar.2009.www.pirate-bay.org.1080p.mkv", "Avatar", "2009"),
@@ -362,9 +362,9 @@ def test_remove_url(file_name, expected_cleaned):
 
 # case success
 def test_add_new_tags_success(tmp_path, monkeypatch):
-    # 1. Setup : Création d'un faux fichier data.py
+    # 1. Setup: Create a mock data.py file
     fake_data_file = tmp_path / "data.py"
-    initial_content = """# Début du fichier
+    initial_content = """# Header of file
 import re
 
 TAGS = [
@@ -372,63 +372,63 @@ TAGS = [
     r'vff'
 ]
 
-# Fin du fichier
+# Footer of file
 def dummy_function():
     pass
 """
     fake_data_file.write_text(initial_content, encoding="utf-8")
     
-    # 2. Mock : On redirige DATA_FILE vers notre faux fichier
+    # 2. Mock: Redirect DATA_FILE to mock file
     monkeypatch.setattr(utils, "DATA_FILE", fake_data_file)
     
-    # 3. La grande liste de tests (couvre tous les cas)
+    # 3. Test list covering edge cases
     tags_to_test = [
-        "vostfr",         # Cas basique : Mot normal
-        "  TrueFrench  ", # Nettoyage : Espaces autour et majuscules
-        "hdr10+",         # Regex : Caractère spécial '+' (doit être échappé en \+)
-        "dts.ma",         # Regex : Caractère spécial '.' (doit être échappé en \.)
-        "bluray",         # Doublon texte : Déjà dans le fichier initial (doit être ignoré)
-        "",               # Cas vide : Chaîne vide (doit être ignorée)
-        "   "             # Cas vide : Espaces seuls (doit être ignorée)
+        "vostfr",         # Standard tag
+        "  TrueFrench  ", # Trimming whitespace and lowercasing
+        "hdr10+",         # Special regex character '+' (must be escaped to \+)
+        "dts.ma",         # Special regex character '.' (must be escaped to \.)
+        "bluray",         # Duplicate tag: Already in file (must be ignored)
+        "",               # Empty string (must be ignored)
+        "   "             # Whitespace only (must be ignored)
     ]
     
-    # 4. Exécution
+    # 4. Execution
     utils.add_new_tags(tags_to_test)
     
-    # 5. Vérifications
+    # 5. Verification
     result_content = fake_data_file.read_text(encoding="utf-8")
     
-    # Vérification des ajouts et du nettoyage (minuscules)
+    # Verify additions and lowercase formatting
     assert "r'vostfr'" in result_content
     assert "r'truefrench'" in result_content
     
-    # Vérification CRITIQUE : l'échappement des caractères regex
+    # Verify regex escaping
     assert r"r'hdr10\+'" in result_content
     assert r"r'dts\.ma'" in result_content
     
-    # Vérification des doublons : bluray ne doit apparaître qu'une seule fois
+    # Verify deduplication: bluray should only appear once
     assert result_content.count("r'bluray'") == 1
     
-    # Vérification de l'intégrité du fichier (le code autour ne doit pas être cassé)
+    # Verify file integrity: surrounding code preserved
     assert "def dummy_function():" in result_content
-    assert "# Début du fichier" in result_content
+    assert "# Header of file" in result_content
 
 
 # ==========================================
-# TEST 2 : LES CAS D'ERREURS ET LIMITES
+# TEST 2: ERROR CASES AND BOUNDARIES
 # ==========================================
 def test_add_new_tags_errors(tmp_path, monkeypatch, capsys):
     
-    # --- Cas d'erreur A : Le fichier n'existe pas ---
+    # --- Error case A: File does not exist ---
     missing_file = tmp_path / "non_existent.py"
     monkeypatch.setattr(utils, "DATA_FILE", missing_file)
     with pytest.raises(RuntimeError) as exc_info:
         utils.add_new_tags(["vostfr"])
     assert "The file" in str(exc_info.value)
     
-    # --- Cas d'erreur B : Le fichier existe mais n'a pas de liste TAGS ---
+    # --- Error case B: File exists but has no TAGS list ---
     invalid_file = tmp_path / "invalid_data.py"
-    invalid_file.write_text("UNE_AUTRE_LISTE = ['a', 'b']", encoding="utf-8")
+    invalid_file.write_text("OTHER_LIST = ['a', 'b']", encoding="utf-8")
     monkeypatch.setattr(utils, "DATA_FILE", invalid_file)
     utils.add_new_tags(["vostfr"])
     captured = capsys.readouterr()

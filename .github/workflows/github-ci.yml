@@ -83,6 +83,22 @@ jobs:
         include-hidden-files: true
         retention-days: 1
 
+    - name: Build Standalone Executable (PyInstaller)
+      run: |
+        pyinstaller media-organizer.spec --noconfirm
+
+    - name: Test Standalone Executable on ${{ matrix.os }}
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          ./dist/media-organizer.exe --help
+          ./dist/media-organizer.exe config --list
+        else
+          chmod +x ./dist/media-organizer
+          ./dist/media-organizer --help
+          ./dist/media-organizer config --list
+        fi
+
   sonarqube:
     name: SonarQube Scan
     needs: test 

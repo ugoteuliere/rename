@@ -6,3 +6,4 @@ pytest
 pytest-cov
 google-genai
 customtkinter>=6.0.0
+pyinstaller>=6.0.0

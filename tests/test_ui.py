@@ -24,6 +24,15 @@ def test_parse_arguments_default(monkeypatch):
     assert args.verbose is False
     assert ui.SIMULATE_ENABLED is False
 
+def test_parse_arguments_gui(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["main.py", "-g"])
+    args = ui.parse_arguments()
+    assert args.gui is True
+
+    monkeypatch.setattr(sys, "argv", ["main.py", "--gui"])
+    args = ui.parse_arguments()
+    assert args.gui is True
+
 def test_parse_arguments_simulate(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["main.py", "-s"])
     args = ui.parse_arguments()
@@ -325,9 +334,10 @@ def test_logging_functions(tmp_path, monkeypatch):
 
     # print_log with LOG_ENABLED
     monkeypatch.setattr(ui, "LOG_ENABLED", True)
-    with patch("builtins.open", mock_open()) as mock_f:
+    with patch("builtins.open", mock_open()) as mock_f, patch("builtins.print") as mock_print:
         ui.print_log("file log message")
         mock_f.assert_called()
+        mock_print.assert_not_called()
     
     # rich_print_log without LOG_ENABLED
     monkeypatch.setattr(ui, "LOG_ENABLED", False)
@@ -340,6 +350,30 @@ def test_logging_functions(tmp_path, monkeypatch):
     with patch("src.ui.print_log") as mock_pl:
         ui.rich_print_log("rich log enabled message")
         mock_pl.assert_called()
+
+def test_get_log_dir(tmp_path, monkeypatch):
+    # Non-frozen
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    log_dir = ui.get_log_dir()
+    assert log_dir.name == "log"
+
+    # Frozen normal
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    log_dir_frozen = ui.get_log_dir()
+    assert log_dir_frozen == tmp_path / "log"
+
+    # Frozen permission error fallback
+    orig_mkdir = Path.mkdir
+    def mock_mkdir(self, *args, **kwargs):
+        if self == tmp_path / "log":
+            raise PermissionError("Access denied")
+        return orig_mkdir(self, *args, **kwargs)
+    
+    monkeypatch.setattr(Path, "mkdir", mock_mkdir)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "bin" / "app.exe"))
+    log_dir_fallback = ui.get_log_dir()
+    assert log_dir_fallback == tmp_path / "bin" / "log"
 
 def test_print_error():
     # Verbose False

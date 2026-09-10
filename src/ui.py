@@ -45,7 +45,7 @@ def parse_arguments():
 
     description_text = (
         "🎬 Media Organizer & Renamer\n"
-        "Automatically parses, renames, and sorts messy video files using the TMDB and Gemini APIs."
+        "Automatically parses, renames, and sorts messy video files using TMDB and Multi-Cloud AI (Gemini, Groq, OpenRouter, Cloudflare)."
     )
     
     epilog_text = (
@@ -72,6 +72,8 @@ def parse_arguments():
     )
 
     modes_group = parser.add_argument_group("Operational Modes")
+    modes_group.add_argument("-g", "--gui", action="store_true",
+                             help="Launch modern graphical configuration interface (GUI).")
     modes_group.add_argument("-r", "--only-rename", "--only_rename", action="store_true", dest="only_rename",
                              help="Renames files in place without moving them to Movie/TV Show folders.")
     modes_group.add_argument("-s", "--simulate", action="store_true",
@@ -346,10 +348,24 @@ def display_config_table(show_secrets=False):
     if not show_secrets:
         rich_print_log("🔒 Secrets masked. Use [cyan]--show-secrets[/cyan] to reveal.\n")
 
+def get_log_dir() -> Path:
+    """Resolve the log directory: current working directory when frozen, otherwise project root."""
+    if getattr(sys, "frozen", False):
+        try:
+            cwd_log = Path.cwd() / "log"
+            cwd_log.mkdir(parents=True, exist_ok=True)
+            return cwd_log
+        except (PermissionError, OSError):
+            exe_log = Path(sys.executable).resolve().parent / "log"
+            exe_log.mkdir(parents=True, exist_ok=True)
+            return exe_log
+    log_dir = Path(__file__).resolve().parent.parent / "log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
+
 def print_log(message):
     if LOG_ENABLED:
-        log_dir = Path(__file__).resolve().parent.parent / "log"
-        os.makedirs(log_dir, exist_ok=True) 
+        log_dir = get_log_dir()
         today = datetime.now().strftime("%Y-%m-%d")
         path = log_dir / f"{today}.txt"
 
@@ -371,9 +387,9 @@ def rich_print_log(*args, **kwargs):
         with console_capture.capture() as capture:
             console_capture.print(*args, **kwargs)
             
-        texte_brut = capture.get()
-        if texte_brut.strip():
-            print_log("\n" + texte_brut.rstrip("\n"))
+        raw_text = capture.get()
+        if raw_text.strip():
+            print_log("\n" + raw_text.rstrip("\n"))
     else:
         console = Console()
         console.print(*args, **kwargs)
