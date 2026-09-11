@@ -3,6 +3,7 @@ import pytest
 import pandas as pd
 from pathlib import Path, PureWindowsPath, PurePosixPath
 from unittest.mock import patch, call, MagicMock
+import main
 from src import files, utils, api, mail, ui
 import requests
 import smtplib
@@ -2049,3 +2050,266 @@ def test_main_path_rename_and_move_overriding_downloads(tmp_path, monkeypatch):
         moved_file = movies_dir / "Inception (2010).mkv"
         assert moved_file.exists()
         assert not f.exists()
+
+
+def test_process_media_clean_movie_missing_tags_renamed_and_moved(tmp_path, monkeypatch):
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    movies_dir = tmp_path / "movies"
+    movies_dir.mkdir()
+    tv_dir = tmp_path / "tv"
+    tv_dir.mkdir()
+
+    movie_file = downloads / "Inception (2010).mkv"
+    movie_file.touch()
+
+    monkeypatch.setattr(files, "MOVIES_FOLDER", str(movies_dir))
+    monkeypatch.setattr(files, "TV_SHOWS_FOLDER", str(tv_dir))
+    monkeypatch.setattr(files, "NOT_SORTED_MEDIA_FILES_FOLDER", str(downloads))
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", str(movies_dir))
+    monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", str(tv_dir))
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", str(downloads))
+
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    monkeypatch.setattr(utils, "QUALITY", True)
+    monkeypatch.setattr(ui, "RESOLUTION_ENABLED", True)
+    monkeypatch.setattr(ui, "QUALITY_ENABLED", True)
+
+    args = MagicMock(path=str(downloads), only_rename=False, simulate=False)
+
+    with patch("src.files.get_file_quality_resolution", return_value=("1080p", "BluRay")), \
+         patch("src.ui.user_confirmation"), \
+         patch("src.mail.send_media_success_email"):
+        res = main.process_media(args)
+        assert res == 0
+
+    dest_file = movies_dir / "Inception (2010) [BluRay FullHD].mkv"
+    assert dest_file.exists()
+    assert not movie_file.exists()
+
+
+def test_process_media_clean_tv_show_missing_tags_renamed_and_moved(tmp_path, monkeypatch):
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    movies_dir = tmp_path / "movies"
+    movies_dir.mkdir()
+    tv_dir = tmp_path / "tv"
+    tv_dir.mkdir()
+
+    tv_file = downloads / "Arcane - S01E01.mkv"
+    tv_file.touch()
+
+    monkeypatch.setattr(files, "MOVIES_FOLDER", str(movies_dir))
+    monkeypatch.setattr(files, "TV_SHOWS_FOLDER", str(tv_dir))
+    monkeypatch.setattr(files, "NOT_SORTED_MEDIA_FILES_FOLDER", str(downloads))
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", str(movies_dir))
+    monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", str(tv_dir))
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", str(downloads))
+
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    monkeypatch.setattr(utils, "QUALITY", True)
+    monkeypatch.setattr(ui, "RESOLUTION_ENABLED", True)
+    monkeypatch.setattr(ui, "QUALITY_ENABLED", True)
+
+    args = MagicMock(path=str(downloads), only_rename=False, simulate=False)
+
+    with patch("src.files.get_file_quality_resolution", return_value=("1080p", "WEBRip")), \
+         patch("src.ui.user_confirmation"), \
+         patch("src.mail.send_media_success_email"):
+        res = main.process_media(args)
+        assert res == 0
+
+    dest_file = tv_dir / "Arcane" / "Season 01" / "Arcane - S01E01 [WEBRip FullHD].mkv"
+    assert dest_file.exists()
+    assert not tv_file.exists()
+
+
+def test_process_media_already_clean_file_moved_without_rename(tmp_path, monkeypatch):
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    movies_dir = tmp_path / "movies"
+    movies_dir.mkdir()
+    tv_dir = tmp_path / "tv"
+    tv_dir.mkdir()
+
+    clean_file = downloads / "Inception (2010) [BluRay FullHD].mkv"
+    clean_file.touch()
+
+    monkeypatch.setattr(files, "MOVIES_FOLDER", str(movies_dir))
+    monkeypatch.setattr(files, "TV_SHOWS_FOLDER", str(tv_dir))
+    monkeypatch.setattr(files, "NOT_SORTED_MEDIA_FILES_FOLDER", str(downloads))
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", str(movies_dir))
+    monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", str(tv_dir))
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", str(downloads))
+
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    monkeypatch.setattr(utils, "QUALITY", True)
+    monkeypatch.setattr(ui, "RESOLUTION_ENABLED", True)
+    monkeypatch.setattr(ui, "QUALITY_ENABLED", True)
+
+    args = MagicMock(path=str(downloads), only_rename=False, simulate=False)
+
+    with patch("src.files.rename_media_files") as mock_rename, \
+         patch("src.ui.user_confirmation"), \
+         patch("src.mail.send_media_success_email"):
+        res = main.process_media(args)
+        assert res == 0
+        mock_rename.assert_not_called()
+
+    dest_file = movies_dir / "Inception (2010) [BluRay FullHD].mkv"
+    assert dest_file.exists()
+    assert not clean_file.exists()
+
+
+def test_process_media_clean_file_only_rename_mode(tmp_path, monkeypatch):
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+
+    movie_file = downloads / "Inception (2010).mkv"
+    movie_file.touch()
+
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    monkeypatch.setattr(utils, "QUALITY", True)
+    monkeypatch.setattr(ui, "RESOLUTION_ENABLED", True)
+    monkeypatch.setattr(ui, "QUALITY_ENABLED", True)
+
+    args = MagicMock(path=str(downloads), only_rename=True, simulate=False)
+
+    with patch("src.files.get_file_quality_resolution", return_value=("1080p", "BluRay")), \
+         patch("src.ui.user_confirmation"), \
+         patch("src.mail.send_media_success_email") as mock_mail:
+        res = main.process_media(args, autonomous=True)
+        assert res == 0
+        mock_mail.assert_called_once()
+
+    renamed_file = downloads / "Inception (2010) [BluRay FullHD].mkv"
+    assert renamed_file.exists()
+    assert not movie_file.exists()
+
+
+def test_process_media_already_clean_file_only_rename_mode(tmp_path, monkeypatch):
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+
+    clean_file = downloads / "Inception (2010) [BluRay FullHD].mkv"
+    clean_file.touch()
+
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    monkeypatch.setattr(utils, "QUALITY", True)
+    monkeypatch.setattr(ui, "RESOLUTION_ENABLED", True)
+    monkeypatch.setattr(ui, "QUALITY_ENABLED", True)
+
+    args = MagicMock(path=str(downloads), only_rename=True, simulate=False)
+
+    with patch("src.ui.print_log") as mock_log:
+        res = main.process_media(args, autonomous=False)
+        assert res == 0
+        logged = " ".join([str(c[0][0]) for c in mock_log.call_args_list if c[0]])
+        assert "No media files to rename" in logged
+
+
+def test_move_file_same_path_no_op(tmp_path):
+    f = tmp_path / "file.mkv"
+    f.touch()
+    # Moving file to itself should return early without conflict
+    files.move_file(f, f)
+    assert f.exists()
+
+
+def test_search_media_files_only_resolution_enabled(tmp_path, monkeypatch):
+    target_dir = tmp_path / "incoming"
+    target_dir.mkdir()
+    f = target_dir / "Inception (2010).mkv"
+    f.touch()
+
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    monkeypatch.setattr(utils, "QUALITY", False)
+    monkeypatch.setattr(ui, "RESOLUTION_ENABLED", True)
+    monkeypatch.setattr(ui, "QUALITY_ENABLED", False)
+
+    with patch("src.files.get_file_quality_resolution", return_value=("1080p", None)):
+        messy_df, clean_df = files.search_media_files(str(target_dir))
+        assert messy_df.empty
+        assert len(clean_df) == 1
+        assert clean_df.iloc[0]["Corrected"] == "Inception (2010) [FullHD]"
+
+
+def test_search_media_files_only_quality_enabled(tmp_path, monkeypatch):
+    target_dir = tmp_path / "incoming"
+    target_dir.mkdir()
+    f = target_dir / "Inception (2010).mkv"
+    f.touch()
+
+    monkeypatch.setattr(utils, "RESOLUTION", False)
+    monkeypatch.setattr(utils, "QUALITY", True)
+    monkeypatch.setattr(ui, "RESOLUTION_ENABLED", False)
+    monkeypatch.setattr(ui, "QUALITY_ENABLED", True)
+
+    with patch("src.files.get_file_quality_resolution", return_value=(None, "BluRay")):
+        messy_df, clean_df = files.search_media_files(str(target_dir))
+        assert messy_df.empty
+        assert len(clean_df) == 1
+        assert clean_df.iloc[0]["Corrected"] == "Inception (2010) [BluRay]"
+
+
+def test_search_media_files_clean_file_no_metadata_detected(tmp_path, monkeypatch):
+    target_dir = tmp_path / "incoming"
+    target_dir.mkdir()
+    f = target_dir / "Inception (2010).mkv"
+    f.touch()
+
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    monkeypatch.setattr(utils, "QUALITY", True)
+    monkeypatch.setattr(ui, "RESOLUTION_ENABLED", True)
+    monkeypatch.setattr(ui, "QUALITY_ENABLED", True)
+
+    with patch("src.files.get_file_quality_resolution", return_value=(None, None)):
+        messy_df, clean_df = files.search_media_files(str(target_dir))
+        assert messy_df.empty
+        assert len(clean_df) == 1
+        assert clean_df.iloc[0]["Corrected"] == "Inception (2010)"
+        assert clean_df.iloc[0]["Original"] == "Inception (2010)"
+
+
+def test_process_media_clean_file_simulation_mode(tmp_path, monkeypatch):
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    movies_dir = tmp_path / "movies"
+    movies_dir.mkdir()
+
+    f = downloads / "Inception (2010).mkv"
+    f.touch()
+
+    monkeypatch.setattr(files, "MOVIES_FOLDER", str(movies_dir))
+    monkeypatch.setattr(files, "TV_SHOWS_FOLDER", str(movies_dir))
+    monkeypatch.setattr(files, "NOT_SORTED_MEDIA_FILES_FOLDER", str(downloads))
+    monkeypatch.setattr(utils, "MOVIES_FOLDER", str(movies_dir))
+    monkeypatch.setattr(utils, "TV_SHOWS_FOLDER", str(movies_dir))
+    monkeypatch.setattr(utils, "NOT_SORTED_MEDIA_FILES_FOLDER", str(downloads))
+
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    monkeypatch.setattr(utils, "QUALITY", True)
+    monkeypatch.setattr(ui, "RESOLUTION_ENABLED", True)
+    monkeypatch.setattr(ui, "QUALITY_ENABLED", True)
+
+    args = MagicMock(path=str(downloads), only_rename=False, simulate=True)
+
+    with patch("src.files.get_file_quality_resolution", return_value=("1080p", "BluRay")), \
+         patch("src.ui.rich_print_log") as mock_rich:
+        res = main.process_media(args)
+        assert res == 0
+        assert f.exists()
+        logged = " ".join([str(c[0][0]) for c in mock_rich.call_args_list if c[0]])
+        assert "Simulation mode complete" in logged
+
+
+def test_process_media_clean_data_empty_autonomous_logging():
+    args = MagicMock(path=None, only_rename=False, simulate=False)
+    with patch("src.files.search_media_files", return_value=(pd.DataFrame([{"File": "A.mkv"}]), pd.DataFrame())), \
+         patch("src.utils.get_corrected_media_filenames", return_value=pd.DataFrame()), \
+         patch("src.ui.print_log") as mock_log:
+        res = main.process_media(args, autonomous=True, cycle=3)
+        assert res == 0
+        logged = " ".join([str(c[0][0]) for c in mock_log.call_args_list if c[0]])
+        assert "Check 3 : No media to process" in logged
+

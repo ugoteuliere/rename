@@ -79,24 +79,59 @@ def search_media_files(path, exit_if_empty=True):
             else:
                 parse, media = utils.parse_filename(file_path.name)
 
-                if media == "movie": 
+                # Check if resolution or quality tags are enabled
+                res_enabled = bool(getattr(utils, 'RESOLUTION', False) or getattr(ui, 'RESOLUTION_ENABLED', False) or getattr(config, 'RESOLUTION', False))
+                qual_enabled = bool(getattr(utils, 'QUALITY', False) or getattr(ui, 'QUALITY_ENABLED', False) or getattr(config, 'QUALITY', False))
+                has_tags = bool(re.search(r" \[[^\]]+\]$", name_without_ext))
+
+                corrected_name = name_without_ext
+                if (res_enabled or qual_enabled) and not has_tags:
+                    if res_enabled:
+                        utils.RESOLUTION = True
+                    if qual_enabled:
+                        utils.QUALITY = True
+
+                    if is_movie or media == "movie":
+                        res_ptn = parse[2] if len(parse) > 2 else None
+                        qual_ptn = parse[3] if len(parse) > 3 else None
+                    else:
+                        res_ptn = parse[4] if len(parse) > 4 else None
+                        qual_ptn = parse[5] if len(parse) > 5 else None
+
+                    final_res, final_qual = utils.parse_resolution_quality(
+                        res_ptn, qual_ptn, None, None, str(file_path)
+                    )
+                    metadata_parts = []
+                    if qual_enabled and final_qual and str(final_qual).strip():
+                        metadata_parts.append(str(final_qual).strip())
+                    if res_enabled and final_res and str(final_res).strip():
+                        metadata_parts.append(str(final_res).strip())
+
+                    if metadata_parts:
+                        corrected_name = f"{name_without_ext} [{' '.join(metadata_parts)}]"
+
+                if is_movie or media == "movie": 
                     clean_data_table.append({
                         'Original': file_path.stem,
-                        'Corrected': file_path.stem,
+                        'Corrected': corrected_name,
                         'Path': str(file_path),
-                        'Media': media,
+                        'Media': 'movie',
                         'Season': None,
                         'Episode': None   
                     })
 
-                elif media == "tv": 
+                elif is_series or media == "tv": 
+                    se_match = re.search(r'S(\d+)E(\d+)', name_without_ext, re.IGNORECASE)
+                    season_val = parse[2] if len(parse) > 2 and parse[2] else (str(int(se_match.group(1))) if se_match else None)
+                    episode_val = parse[3] if len(parse) > 3 and parse[3] else (str(int(se_match.group(2))) if se_match else None)
+
                     clean_data_table.append({
                         'Original': file_path.stem,
-                        'Corrected': file_path.stem,
+                        'Corrected': corrected_name,
                         'Path': str(file_path),
-                        'Media': media,
-                        'Season': parse[2],
-                        'Episode': parse[3]
+                        'Media': 'tv',
+                        'Season': season_val,
+                        'Episode': episode_val
                     })
 
     if len(messy_data_table) == 0 and len(clean_data_table) == 0:
@@ -105,7 +140,9 @@ def search_media_files(path, exit_if_empty=True):
             sys.exit(1)
         return pd.DataFrame(), pd.DataFrame()
     else:
-        ui.print_log(f"\n📂 Folder scan report:\n - {len(messy_data_table)} files to rename\n - {len(clean_data_table)} files with clean filename\n")
+        files_to_rename_count = len(messy_data_table) + sum(1 for f in clean_data_table if f['Original'] != f['Corrected'])
+        clean_files_count = sum(1 for f in clean_data_table if f['Original'] == f['Corrected'])
+        ui.print_log(f"\n📂 Folder scan report:\n - {files_to_rename_count} files to rename\n - {clean_files_count} files with clean filename\n")
 
     messy_data = pd.DataFrame(messy_data_table)
     clean_data = pd.DataFrame(
@@ -228,6 +265,9 @@ def move_file(old_path, new_path):
     old_abs = old_path.resolve()
     new_abs = new_path.resolve()
 
+    if old_abs == new_abs:
+        return
+
     if new_abs.exists():
         error_msg = f" ❌ Conflict: Target file already exists at {new_abs}"
         raise FileExistsError(error_msg)
@@ -267,7 +307,7 @@ def move_media_files(paths, clean_data_table=None, source_path=None):
     if clean_data_table is not None and not clean_data_table.empty:
         for _, row in clean_data_table.iterrows():
             corr = str(row.get('Corrected', ''))
-            orig = str(row.get('File', ''))
+            orig = str(row.get('File', row.get('Original', '')))
             media = str(row.get('Media', ''))
             lookup[corr] = (orig, media)
 

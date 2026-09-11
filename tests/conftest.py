@@ -1,6 +1,12 @@
+import os
 import pytest
 from pathlib import Path
 from src.config import config
+
+# Clean up oversized environment variables (e.g. from subagent IDE tools) to prevent Windows SetEnvironmentVariable limit crash
+for _k, _v in list(os.environ.items()):
+    if len(_v) > 10000:
+        os.environ.pop(_k, None)
 
 
 @pytest.fixture(autouse=True)

@@ -18,24 +18,35 @@ def process_media(args, autonomous=False, cycle=1):
 
     messy_data_table, clean_data_table = search_result
 
-    if messy_data_table.empty:
+    if messy_data_table.empty and clean_data_table.empty:
         if not autonomous:
             ui.print_log("❌ No media files found to process\n")
         else:
             ui.print_log(f"Check {cycle} : No media to process")
         return 0
 
-    # Match metadata via TMDB and AI fallback to resolve official filenames
-    clean_data_table = utils.get_corrected_media_filenames(messy_data_table, clean_data_table)
+    # Match metadata via TMDB and AI fallback to resolve official filenames for messy files
+    if not messy_data_table.empty:
+        clean_data_table = utils.get_corrected_media_filenames(messy_data_table, clean_data_table)
 
-    if clean_data_table.empty or not utils.has_files_to_rename(clean_data_table):
+    if clean_data_table.empty:
         if not autonomous:
             ui.print_log("❌ No media files to rename\n")
         else:
             ui.print_log(f"Check {cycle} : No media to process")
         return 0
 
-    ui.display_corrected_filenames(clean_data_table)
+    has_renames = utils.has_files_to_rename(clean_data_table)
+
+    if args.only_rename and not has_renames:
+        if not autonomous:
+            ui.print_log("❌ No media files to rename\n")
+        else:
+            ui.print_log(f"Check {cycle} : No media to process")
+        return 0
+
+    if has_renames:
+        ui.display_corrected_filenames(clean_data_table)
 
     # Simulation Mode: Preview renames and target paths without touching disk
     if getattr(args, "simulate", False) or ui.SIMULATE_ENABLED:
@@ -45,16 +56,18 @@ def process_media(args, autonomous=False, cycle=1):
         ui.rich_print_log("\n[bold yellow]🔍 Simulation mode complete: No files were renamed or moved on disk.[/bold yellow]\n")
         return 0
 
-    # User confirmation and physical rename on disk
-    ui.user_confirmation("rename the files")
-    clean_data_table = files.rename_media_files(clean_data_table)
+    if has_renames:
+        # User confirmation and physical rename on disk
+        if not autonomous:
+            ui.user_confirmation("rename the files")
+        clean_data_table = files.rename_media_files(clean_data_table)
 
     if args.only_rename:
         for _, row in clean_data_table.iterrows():
             p = Path(str(row['Path']))
             mail.send_media_success_email(
                 media_name=p.name,
-                original_name=str(row.get('File', p.name)),
+                original_name=str(row.get('File', row.get('Original', p.name))),
                 media_type=str(row.get('Media', 'unknown')),
                 destination_path=str(p)
             )
@@ -66,7 +79,8 @@ def process_media(args, autonomous=False, cycle=1):
     if not clean_data_table.empty:
         paths = files.sort_media_files(clean_data_table)
         ui.display_sorted_files(paths)
-        ui.user_confirmation("move the files to the correct folder")
+        if not autonomous:
+            ui.user_confirmation("move the files to the correct folder")
         files.move_media_files(paths, clean_data_table, source_path=args.path)
         if autonomous:
             ui.print_log(f"Check {cycle} : Successfully processed {len(clean_data_table)} file(s).")

@@ -666,3 +666,46 @@ def test_integration_configure_subcommands_dispatch(monkeypatch):
         assert exit_code == 0
         mock_wizard.assert_called_once_with(section="options", interactive_menu=False)
 
+
+def test_integration_autonomous_clean_file_with_tags_no_infinite_loop(media_env, monkeypatch):
+    """End-to-end integration test: An already clean title missing tags is enriched, moved, and next cycle reports idle."""
+    downloads = media_env["downloads"]
+    movies = media_env["movies"]
+    cm = media_env["config_manager"]
+
+    cm.set("options.resolution", "true")
+    cm.set("options.quality", "true")
+
+    clean_movie = downloads / "Inception (2010).mkv"
+    clean_movie.write_text("movie data", encoding="utf-8")
+
+    monkeypatch.setattr(utils, "RESOLUTION", True)
+    monkeypatch.setattr(utils, "QUALITY", True)
+    monkeypatch.setattr(ui, "RESOLUTION_ENABLED", True)
+    monkeypatch.setattr(ui, "QUALITY_ENABLED", True)
+
+    args = MagicMock(path=str(downloads), only_rename=False, simulate=False)
+
+    logs = []
+    def mock_log(msg):
+        logs.append(str(msg))
+
+    with patch("src.files.get_file_quality_resolution", return_value=("1080p", "BluRay")), \
+         patch("src.mail.send_media_success_email"), \
+         patch("src.ui.print_log", side_effect=mock_log):
+
+        # Cycle 1: Discovers clean file missing tags, renames with tags, and moves to movies library
+        ret1 = main.process_media(args, autonomous=True, cycle=1)
+        assert ret1 == 0
+
+        dest_file = movies / "Inception (2010) [BluRay FullHD].mkv"
+        assert dest_file.exists()
+        assert not clean_movie.exists()
+        assert any("Successfully processed 1 file(s)" in l for l in logs)
+
+        # Cycle 2: Downloads folder is now empty, next cycle reports 'No media to process' without looping
+        ret2 = main.process_media(args, autonomous=True, cycle=2)
+        assert ret2 == 0
+        assert any("Check 2 : No media to process" in l for l in logs)
+
+
