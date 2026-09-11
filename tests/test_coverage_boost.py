@@ -40,7 +40,7 @@ def test_main_no_media_files_to_rename(monkeypatch):
          patch("src.utils.has_files_to_rename", return_value=False), \
          patch("src.ui.print_log") as mock_log:
 
-        mock_args.return_value = MagicMock(subcommand=None, path=None, only_rename=False, simulate=False)
+        mock_args.return_value = MagicMock(subcommand=None, path=None, only_rename=True, simulate=False)
         assert main.main() == 0
         logged = " ".join([str(c[0][0]) for c in mock_log.call_args_list if c[0]])
         assert "No media files to rename" in logged
