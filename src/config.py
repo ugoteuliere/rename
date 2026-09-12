@@ -172,7 +172,7 @@ class ConfigManager:
                     quarantine_dir = Path(tempfile.gettempdir()) / "pytest_rename_quarantine"
                     quarantine_dir.mkdir(parents=True, exist_ok=True)
                     self.config_path = (quarantine_dir / "config.ini").resolve()
-            except Exception:
+            except (OSError, RuntimeError, ValueError, AttributeError):
                 pass
 
         self.config_path.parent.mkdir(parents=True, exist_ok=True)

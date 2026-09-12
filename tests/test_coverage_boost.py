@@ -363,6 +363,12 @@ def test_config_save_quarantine_guard(tmp_path):
     assert "pytest_rename_quarantine" in str(cm.config_path)
 
 
+def test_config_save_quarantine_guard_exception(tmp_path):
+    cm = ConfigManager(custom_path=str(tmp_path / "custom.ini"))
+    with patch.object(cm, "_get_default_user_dir", side_effect=RuntimeError("simulated error")):
+        cm.save()
+
+
 def test_config_property_setters_and_string_getters(tmp_path):
     test_ini = tmp_path / "props.ini"
     cm = ConfigManager(custom_path=str(test_ini))
