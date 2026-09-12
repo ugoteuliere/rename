@@ -90,31 +90,85 @@ jobs:
     - name: Test Standalone Executable on ${{ matrix.os }}
       shell: bash
       run: |
+        mkdir -p test_ci_media
+        touch "test_ci_media/Arrival (2016).mkv"
         if [ "$RUNNER_OS" = "Windows" ]; then
           ./dist/media-organizer.exe --help
           ./dist/media-organizer.exe config --list
+          ./dist/media-organizer.exe --simulate --only-rename --bypass --path "test_ci_media"
         else
           chmod +x ./dist/media-organizer
           ./dist/media-organizer --help
           ./dist/media-organizer config --list
+          ./dist/media-organizer --simulate --only-rename --bypass --path "test_ci_media"
         fi
+
+  test-docker:
+    name: Build & Test Docker Container
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Local Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: media-organizer:test
+
+      - name: Verify CLI & Bundled Dependencies (ffprobe, ffmpeg, gosu)
+        run: |
+          docker run --rm media-organizer:test ffprobe -version
+          docker run --rm media-organizer:test ffmpeg -version
+          docker run --rm media-organizer:test gosu --version
+          docker run --rm media-organizer:test --help
+          docker run --rm media-organizer:test config --list
+
+      - name: Verify Docker Volume Mounts & Simulation Run
+        run: |
+          mkdir -p /tmp/docker_test/config /tmp/docker_test/data/downloads /tmp/docker_test/data/movies /tmp/docker_test/data/tv
+          cat << 'EOF' > /tmp/docker_test/config/config.ini
+          [paths]
+          movies_folder = /data/movies
+          tv_shows_folder = /data/tv
+          not_sorted_media_files_folder = /data/downloads
+
+          [options]
+          bypass = true
+          resolution = false
+          quality = false
+          EOF
+
+          touch "/tmp/docker_test/data/downloads/Arrival (2016).mkv"
+
+          docker run --rm \
+            -e PUID=1000 \
+            -e PGID=1000 \
+            -v /tmp/docker_test/config:/config \
+            -v /tmp/docker_test/data:/data \
+            media-organizer:test --simulate --only-rename --bypass --path /data/downloads
 
   sonarqube:
     name: SonarQube Scan
-    needs: test 
+    needs: [test, test-docker]
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Download coverage artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: coverage-report
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
 
-    - name: SonarQube Scan
-      uses: SonarSource/sonarqube-scan-action@v4
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

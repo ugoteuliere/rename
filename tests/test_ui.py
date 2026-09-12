@@ -10,8 +10,11 @@ from src import ui
 from src.config import ConfigManager
 
 def test_ui_stdout_reconfigure_exception():
-    with patch.object(sys.stdout, "reconfigure", side_effect=Exception("mock reconfigure fail")):
+    with patch.object(sys.stdout, "reconfigure", side_effect=ValueError("mock reconfigure fail")):
         importlib.reload(ui)
+    with patch.object(sys, "stdout", object()):
+        importlib.reload(ui)
+    importlib.reload(ui)
 
 def test_parse_arguments_default(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["main.py"])
@@ -111,7 +114,10 @@ def test_parse_arguments_path_nonexistent(monkeypatch, tmp_path):
 
 def test_parse_arguments_ai_missing_key(monkeypatch):
     monkeypatch.setattr(ui, "GEMINI_API_KEY", None)
-    with patch.object(ConfigManager, "GEMINI_API_KEY", new_callable=PropertyMock, return_value=None):
+    with patch.object(ConfigManager, "GEMINI_API_KEY", new_callable=PropertyMock, return_value=None), \
+         patch.object(ConfigManager, "GROQ_API_KEY", new_callable=PropertyMock, return_value=None), \
+         patch.object(ConfigManager, "OPENROUTER_API_KEY", new_callable=PropertyMock, return_value=None), \
+         patch.object(ConfigManager, "CLOUDFLARE_API_TOKEN", new_callable=PropertyMock, return_value=None):
         monkeypatch.setattr(sys, "argv", ["main.py", "-i"])
         with pytest.raises(SystemExit):
             ui.parse_arguments()
@@ -134,7 +140,10 @@ def test_parse_arguments_learn_flags(monkeypatch):
 
 def test_parse_arguments_learn_missing_key(monkeypatch):
     monkeypatch.setattr(ui, "GEMINI_API_KEY", None)
-    with patch.object(ConfigManager, "GEMINI_API_KEY", new_callable=PropertyMock, return_value=None):
+    with patch.object(ConfigManager, "GEMINI_API_KEY", new_callable=PropertyMock, return_value=None), \
+         patch.object(ConfigManager, "GROQ_API_KEY", new_callable=PropertyMock, return_value=None), \
+         patch.object(ConfigManager, "OPENROUTER_API_KEY", new_callable=PropertyMock, return_value=None), \
+         patch.object(ConfigManager, "CLOUDFLARE_API_TOKEN", new_callable=PropertyMock, return_value=None):
         monkeypatch.setattr(sys, "argv", ["main.py", "-L"])
         with pytest.raises(SystemExit):
             ui.parse_arguments()

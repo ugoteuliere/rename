@@ -2,184 +2,33 @@
 
 Technical guide and reference for the Media Organizer & Renamer.
 
----
-
 ## Table of Contents
 
-1. [Installation & Standalone Executables](#1-installation--standalone-executables)
-   - [Binary Downloads](#binary-downloads)
-   - [Windows Installation](#windows-installation)
-   - [Linux Installation](#linux-installation)
-   - [macOS Installation & Gatekeeper](#macos-installation--gatekeeper)
-   - [Zero-Python Usage](#zero-python-usage)
-   - [Building from Source (PyInstaller)](#building-from-source-pyinstaller)
-   - [Continuous Integration & Release Matrix](#continuous-integration--release-matrix)
-2. [Folder Structure & Plex Standards](#2-folder-structure--plex-standards)
-3. [Configuration](#3-configuration)
-   - [Graphical Configuration Tool (GUI)](#graphical-configuration-tool-gui)
-   - [Terminal Setup Wizard](#terminal-setup-wizard)
+1. [Folder Structure & Plex Standards](#1-folder-structure--plex-standards)
+2. [Configuration](#2-configuration)
+   - [Configuration Tool](#configuration-tool)
+   - [Configuration File](#configuration-file)
+   - [Obtaining API Keys](#obtaining-api-keys)
+   - [Setup Email Notifications](#setup-email-notifications)
    - [Command-Line Configuration (Inspect & Update)](#command-line-configuration-inspect--update)
-   - [Environment Variables](#environment-variables)
-   - [Configuration File Schema](#configuration-file-schema)
-4. [Operational Modes](#4-operational-modes)
+3. [Modes](#3-modes)
    - [Default: Rename & Move](#default-rename--move)
-   - [Rename Only (In-Place)](#rename-only-in-place)
-   - [Simulation Mode (Dry-Run)](#simulation-mode-dry-run)
+   - [Rename Only](#rename-only)
+   - [Simulation Mode](#simulation-mode)
    - [Autonomous Background Watcher](#autonomous-background-watcher)
-5. [Options & CLI Flags](#5-options--cli-flags)
-6. [Matching & Multi-Cloud AI Architecture](#6-matching--multi-cloud-ai-architecture)
+4. [Options & CLI Flags](#4-options--cli-flags)
+5. [Matching & Multi-Cloud AI Architecture](#5-matching--multi-cloud-ai-architecture)
    - [Metadata Extraction Pipeline](#metadata-extraction-pipeline)
    - [TMDB Match Probability Scorer](#tmdb-match-probability-scorer)
-   - [Batch Processing & Failover](#batch-processing--failover)
-7. [Provider Setup Guides & Free Quotas](#7-provider-setup-guides--free-quotas)
-   - [The Movie Database (TMDB)](#the-movie-database-tmdb)
-   - [Google Gemini](#google-gemini)
-   - [Groq Cloud](#groq-cloud)
-   - [OpenRouter](#openrouter)
-   - [Cloudflare Workers AI](#cloudflare-workers-ai)
-8. [Keyword & Tag Management](#8-keyword--tag-management)
-9. [Email Alerts & System Setup](#9-email-alerts--system-setup)
-   - [Gmail SMTP Setup](#gmail-smtp-setup)
-   - [FFmpeg / ffprobe Setup](#ffmpeg--ffprobe-setup)
+6. [Keyword Management](#6-keyword-management)
+7. [Docker Deployment](#7-docker-deployment)
+   - [Volumes & Permissions](#volumes--permissions)
+   - [Docker Run (CLI)](#docker-run-cli)
+   - [Docker Compose](#docker-compose)
 
----
 
-## 1. Installation & Standalone Executables
 
-Media Organizer & Renamer is packaged as a zero-dependency standalone binary for Windows, Linux, and macOS. These pre-compiled releases include an embedded Python runtime, CustomTkinter assets, and all required packages—no Python environment or external package installation is required.
-
-### Binary Downloads
-
-Download the binary matching your platform from the [GitHub Releases](https://github.com/ugoteuliere/rename/releases/latest) page:
-
-| Operating System | Architecture | Artifact Name | Format |
-| :--- | :--- | :--- | :--- |
-| **Windows** | x86_64 / x64 | `media-organizer-windows-x64.exe` | Standalone executable or `.zip` |
-| **Linux** | x86_64 / x64 | `media-organizer-linux-x64` | Executable binary or `.tar.gz` |
-| **macOS** | Apple Silicon / Intel | `media-organizer-macos-arm64` / `x64` | Mach-O executable or `.tar.gz` |
-
----
-
-### Windows Installation
-
-1. **Download**: Obtain `media-organizer-windows-x64.exe` (or unpack `media-organizer-windows-x64.zip`).
-2. **Placement**: Place the executable in a dedicated folder, such as `C:\Program Files\MediaOrganizer\` or `C:\Users\<Username>\bin\`.
-3. **Add to PATH (Optional)**:
-   - Search for **Environment Variables** in the Windows Start menu.
-   - Under *User variables*, select `Path` -> click **Edit** -> click **New** -> enter the folder path containing `media-organizer-windows-x64.exe` (or rename to `media-organizer.exe`).
-   - Click **OK**. You can now execute `media-organizer` from any Command Prompt or PowerShell terminal.
-4. **SmartScreen Notice**: Because the binary is compiled via GitHub Actions without an enterprise code-signing certificate, Windows SmartScreen may display an unrecognized app warning on first launch. Click **More info** -> **Run anyway**.
-5. **Launch**:
-   ```powershell
-   # Open the modern graphical configurator
-   .\media-organizer.exe --gui
-
-   # Or run the interactive terminal wizard
-   .\media-organizer.exe configure
-
-   # Process downloads folder
-   .\media-organizer.exe
-   ```
-
----
-
-### Linux Installation
-
-1. **Download**:
-   ```bash
-   curl -LO https://github.com/ugoteuliere/rename/releases/latest/download/media-organizer-linux-x64
-   ```
-2. **Make Executable**:
-   ```bash
-   chmod +x media-organizer-linux-x64
-   ```
-3. **Install System-Wide (Optional)**:
-   ```bash
-   sudo mv media-organizer-linux-x64 /usr/local/bin/media-organizer
-   ```
-4. **GUI Display Requirement**:
-   - The CLI and terminal setup wizard operate natively in headless terminal and SSH sessions.
-   - Launching `--gui` requires an active desktop display server (X11 or Wayland).
-
----
-
-### macOS Installation & Gatekeeper
-
-1. **Download**: Download the release binary for macOS from GitHub Releases.
-2. **Make Executable**:
-   ```bash
-   chmod +x media-organizer-macos-*
-   ```
-3. **Install to PATH (Optional)**:
-   ```bash
-   sudo mv media-organizer-macos-* /usr/local/bin/media-organizer
-   ```
-4. **macOS Gatekeeper**:
-   - macOS quarantines files downloaded via web browsers. If macOS prompts that `"media-organizer cannot be opened because the developer cannot be verified"`:
-     ```zsh
-     xattr -d com.apple.quarantine /usr/local/bin/media-organizer
-     ```
-   - Alternatively, open **System Settings** -> **Privacy & Security** -> scroll down and click **Open Anyway**.
-
----
-
-### Zero-Python Usage
-
-Once the binary is installed, all CLI commands, arguments, and operational flags function identically to `python main.py`:
-
-```bash
-# Launch modern dark-mode GUI
-media-organizer --gui
-
-# Inspect and update configurations
-media-organizer config --list
-media-organizer config --set paths.movies_folder "/path/to/movies"
-
-# Perform dry-run preview simulation
-media-organizer --simulate
-
-# Run autonomous background watcher daemon
-media-organizer --autonomous
-```
-
----
-
-### Building from Source (PyInstaller)
-
-To compile your own standalone binaries locally:
-
-1. Clone repository and install dependencies:
-   ```bash
-   git clone https://github.com/ugoteuliere/rename.git
-   cd rename
-   pip install -r requirements.txt
-   ```
-2. Run PyInstaller using the included specification:
-   ```bash
-   pyinstaller media-organizer.spec --noconfirm
-   ```
-3. The standalone binary is generated in `dist/`:
-   - Windows: `dist/media-organizer.exe`
-   - Linux / macOS: `dist/media-organizer`
-
----
-
-### Continuous Integration & Release Matrix
-
-The repository implements industry-standard multi-platform CI/CD:
-1. **Multi-Platform CI (`.github/workflows/github-ci.yml`)**:
-   - Triggers on push to `main`, `dev`, and pull requests.
-   - Matrix runs across `windows-latest`, `ubuntu-latest`, and `macos-latest`.
-   - Executes unit/integration test suites with coverage, compiles the standalone binary with PyInstaller on each OS, and executes smoke tests (`--help` and `config --list`) to verify runtime stability across all 3 platforms.
-2. **Automated Releases (`.github/workflows/release.yml`)**:
-   - Triggers automatically upon pushing a semantic version tag (e.g. `v1.2.0`).
-   - Compiles native binaries on Windows, Linux, and macOS in parallel.
-   - Calculates cryptographic SHA256 checksums (`SHA256SUMS.txt`).
-   - Publishes a GitHub Release with attached `.zip`, `.tar.gz`, and standalone binaries.
-
----
-
-## 2. Folder Structure & Plex Standards
+## 1. Folder Structure & Plex Standards
 
 The application operates on three directories:
 * **Downloads folder** (`paths.not_sorted_media_files_folder`): incoming, unsorted media files.
@@ -193,106 +42,20 @@ Processed files follow official Plex naming conventions:
 * **Movies**: `Title (Year).ext` or `Title (Year) [Resolution Quality].ext`
 * **TV Shows**: `Show Name/Season XX/Show Name - SXXEXX.ext`
 
----
+## 2. Configuration
 
-## 3. Configuration
-
-### Graphical Configuration Tool (GUI)
-Launch the modern dark-themed graphical settings window (powered by CustomTkinter):
-
+### Configuration Tool
+Launch the graphical settings window:
 ```bash
 media-organizer --gui
-# or with python:
-python main.py --gui
 ```
 
-Features:
-* Native OS folder pickers (`Browse...` buttons) for library paths.
-* Password-masked inputs with toggle visibility for API credentials.
-* In-app connection verification buttons for TMDB, Gemini, Groq, OpenRouter, and Cloudflare.
-* Toggle switches for automation, logging, and video stream metadata tags.
-* Test email button to verify SMTP credentials before running headless.
-
----
-
-### Terminal Setup Wizard
-For headless environments or SSH sessions, run the interactive terminal wizard:
-
+For headless environments or SSH sessions, run the terminal wizard:
 ```bash
-# Categorized menu wizard
-python main.py configure
-
-# Direct category setup
-python main.py configure --paths     # Media library directories
-python main.py configure --ai        # TMDB and Cloud AI credentials
-python main.py configure --email     # Gmail SMTP credentials and triggers
-python main.py configure --options   # Automation and logging defaults
-python main.py configure --video     # FFmpeg resolution and quality tags
-python main.py configure --full      # Step-by-step through all settings without menu
+media-organizer configure
 ```
 
----
-
-### Command-Line Configuration (Inspect & Update)
-
-```bash
-# List all settings (sensitive values are masked)
-python main.py config --list
-
-# List all settings unmasked
-python main.py config --list --show-secrets
-
-# Print active config file path
-python main.py config --path
-
-# Get a specific value
-python main.py config --get paths.movies_folder
-python main.py config --get api.tmdb_api_key
-
-# Set a specific value
-python main.py config --set paths.movies_folder "D:/Media/Movies"
-python main.py config --set api.groq_api_key "gsk_..."
-python main.py config --set options.bypass true
-
-# Unset / delete a configuration key
-python main.py config --unset api.gemini_api_key
-```
-
----
-
-### Environment Variables
-
-All settings can be overridden by environment variables (useful for containerized or CI/CD deployments):
-
-| Config Key | Environment Variable | Expected Value |
-| :--- | :--- | :--- |
-| `paths.movies_folder` | `RENAME_MOVIES_FOLDER` | Valid directory path |
-| `paths.tv_shows_folder` | `RENAME_TV_SHOWS_FOLDER` | Valid directory path |
-| `paths.not_sorted_media_files_folder` | `RENAME_NOT_SORTED_MEDIA_FILES_FOLDER` | Valid directory path |
-| `api.tmdb_api_key` | `RENAME_TMDB_API_KEY` | TMDB API key or Bearer token |
-| `api.gemini_api_key` | `RENAME_GEMINI_API_KEY` | Google Gemini API key |
-| `api.groq_api_key` | `RENAME_GROQ_API_KEY` | Groq Cloud API key |
-| `api.openrouter_api_key` | `RENAME_OPENROUTER_API_KEY` | OpenRouter API key |
-| `api.cloudflare_api_token` | `RENAME_CLOUDFLARE_API_TOKEN` | Cloudflare Workers AI token |
-| `api.cloudflare_account_id` | `RENAME_CLOUDFLARE_ACCOUNT_ID` | Cloudflare 32-character account ID |
-| `options.ai_provider` | `RENAME_AI_PROVIDER` | `auto`, `gemini`, `groq`, `openrouter`, `cloudflare` |
-| `options.tmdb_min_confidence` | `RENAME_TMDB_MIN_CONFIDENCE` | Float `0.0` to `1.0` (default: `0.75`) |
-| `options.ai_min_confidence` | `RENAME_AI_MIN_CONFIDENCE` | Float `0.0` to `1.0` (default: `0.70`) |
-| `options.bypass` | `RENAME_BYPASS` | Boolean (`true`/`false` or `y`/`n`) |
-| `options.autonomous` | `RENAME_AUTONOMOUS` | Boolean |
-| `options.polling_interval` | `RENAME_POLLING_INTERVAL` | Integer $\ge 1$ (minutes) |
-| `options.ai` | `RENAME_AI` | Boolean |
-| `options.learn` | `RENAME_LEARN` | Boolean |
-| `options.resolution` | `RENAME_RESOLUTION` | Boolean |
-| `options.quality` | `RENAME_QUALITY` | Boolean |
-| `options.log` | `RENAME_LOG` | Boolean |
-| `options.verbose` | `RENAME_VERBOSE` | Boolean |
-| `mail.mail` | `RENAME_MAIL` | Sender Gmail address |
-| `mail.mail_pswd` | `RENAME_MAIL_PSWD` | 16-character Gmail App Password |
-
----
-
-### Configuration File Schema
+### Configuration File
 
 Default file location:
 * **Windows**: `%APPDATA%\rename\config.ini`
@@ -334,55 +97,67 @@ mail = your_email@gmail.com
 mail_pswd = your_16_char_app_password
 ```
 
----
+### Obtaining API Keys
 
-## 4. Operational Modes
+* **TMDB** (`api.tmdb_api_key`): Create a free account at [themoviedb.org](https://www.themoviedb.org/) > **Settings** > **API** > generate an **API Key (v3 auth)**.
+* **Google Gemini** (`api.gemini_api_key`): Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and click **Create API Key**.
+* **Groq** (`api.groq_api_key`): Sign up at [Groq Console](https://console.groq.com/keys) and click **Create API Key** (`gsk_...`).
+* **OpenRouter** (`api.openrouter_api_key`): Register at [OpenRouter](https://openrouter.ai/settings/keys) and create a key (set a $0.00 credit limit to only use free models).
+* **Cloudflare Workers AI**: In the [Cloudflare Dashboard](https://dash.cloudflare.com/):
+  - **Account ID** (`api.cloudflare_account_id`): Found on the right sidebar of the dashboard overview.
+  - **API Token** (`api.cloudflare_api_token`): Go to **My Profile** > **API Tokens** > create a token with **Workers AI** permissions (`cfut_...`).
+
+### Setup Email Notifications
+1. Enable **2-Step Verification** on your [Google Account](https://myaccount.google.com/security).
+2. Generate a 16-character **App Password** under Account Security > App Passwords.
+
+### Command-Line Configuration (Inspect & Update)
+
+```bash
+# List all settings
+media-organizer config --list
+
+# Print active config file path
+media-organizer config --path
+
+# Get a specific value
+media-organizer config --get paths.movies_folder
+
+# Set a specific value
+media-organizer config --set paths.movies_folder "D:/Media/Movies"
+
+# Unset / delete a configuration key
+media-organizer config --unset api.gemini_api_key
+```
+
+## 3. Modes
 
 ### Default: Rename & Move
 Scans incoming downloads, queries TMDB, prompts for user confirmation, renames files, and moves them to destination folders.
 ```bash
-python main.py
-
-# Override source folder
-python main.py --path="/path/to/incoming"
+media-organizer
 ```
 
-### Rename Only (In-Place)
+### Rename Only
 Renames files in-place without moving them to destination directories.
 ```bash
-python main.py -r
-# or
-python main.py --only-rename
-
-# Target any custom folder standalone (no library folder configuration required)
-python main.py -r --path="/path/to/folder"
+media-organizer --only-rename
 ```
 
-### Simulation Mode (Dry-Run)
+### Simulation Mode
 Previews proposed renames and destination paths without writing to disk or sending emails.
 ```bash
-python main.py -s
-# or
-python main.py --simulate
-
-# Combine with other flags
-python main.py -s -i --path="/path/to/test"
+media-organizer --simulate
 ```
 
 ### Autonomous Background Watcher
-Runs as a persistent daemon polling the incoming folder periodically.
+Runs as a persistent daemon polling the download folder periodically.
 ```bash
-# Polling interval from config (default: 15 min)
-python main.py -a
-
-# Custom polling interval (e.g. 5 minutes)
-python main.py -a --interval 5
+media-organizer --autonomous --interval 5
 ```
-Autonomous mode automatically enables `-b` (`bypass`) and `-l` (`log`), skips in-progress downloads (`.crdownload`, `.part`, `.tmp`), and terminates cleanly on `SIGINT` / `Ctrl+C`. In autonomous mode, logs are written exclusively to the daily log file (`log/YYYY-MM-DD.txt`) to keep the terminal completely clean and silent for headless background operation.
+Autonomous mode automatically enables `-b` (`bypass`) and `-l` (`log`).
 
----
-
-## 5. Options & CLI Flags
+## 4. Options & CLI Flags
 
 | Flag | Long Option | Config Key | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
@@ -403,9 +178,7 @@ Autonomous mode automatically enables `-b` (`bypass`) and `-l` (`log`), skips in
 | `-t` | `--notify-tag` | `options.notify_on_tag` | `false` | Sends email notification when a new keyword tag is learned. |
 | — | `--path="<dir>"` | — | Incoming dir | Targets a specific folder. |
 
----
-
-## 6. Matching & Multi-Cloud AI Architecture
+## 5. Matching & Multi-Cloud AI Architecture
 
 ```
 Raw Filename 
@@ -420,13 +193,13 @@ Raw Filename
                         │ Probability >= 0.75             │ Probability < 0.75
                         ▼                                 ▼
                  [Accept Match]                 [Queue for AI Batch]
-                                                          │
-                                                          ▼
-                                            [Multi-Cloud AI Orchestrator]
-                                            (Gemini / Groq / OpenRouter / Cloudflare)
-                                                          │
-                                                          ▼
-                                            [Pydantic Validation & Sanitization]
+                                                           │
+                                                           ▼
+                                             [Multi-Cloud AI Orchestrator]
+                                             (Gemini / Groq / OpenRouter / Cloudflare)
+                                                           │
+                                                           ▼
+                                             [Pydantic Validation & Sanitization]
 ```
 
 ### Metadata Extraction Pipeline
@@ -442,112 +215,61 @@ $$P = 0.50 \cdot \text{SequenceSimilarity} + 0.35 \cdot \text{TokenOverlap} + 0.
 * If $P \ge 0.75$, the match is accepted directly.
 * If $P < 0.75$ and AI fallback is enabled (`-i`), the item is queued for cloud AI verification.
 
-### Batch Processing & Failover
-* Items requiring AI are grouped into chunks of up to 25 files to minimize API roundtrips.
-* Exactly one provider executes each batch.
-* If the active provider returns an HTTP 429 (`RESOURCE_EXHAUSTED` / rate limit / quota exceeded), the orchestrator automatically bypasses it and retries the batch on the next configured provider.
+## 6. Keyword Management
 
----
+The cleaning engine uses a dictionary to strip filenames:
+1. **Default Keywords (`data/tags.json`)**: Default keywords shipped with the application.
+2. **User Custom Keywords (`custom_tags.json`)**: User's personal keywords stored in the configuration folder alongside `config.ini`.
+3. **AI Learned Keywords (`gemini_tags.json`)**: When keyword learning is enabled (`-L` or `options.learn = true`), missing keywords discovered by AI are validated and appended to `gemini_tags.json`.
 
-## 7. Provider Setup Guides & Free Quotas
+## 7. Docker Deployment
 
-### The Movie Database (TMDB)
-Core metadata provider for official titles, years, and season numbers.
-* **Cost**: Free.
-* **Setup**:
-  1. Register an account at [themoviedb.org](https://www.themoviedb.org/).
-  2. Navigate to **Settings** > **API** > **Request an API Key** > **Developer**.
-  3. Copy your **API Key (v3 auth)** and configure it:
-     ```bash
-     python main.py config --set api.tmdb_api_key "<your_tmdb_key>"
-     ```
+A multi-architecture Docker image (`linux/amd64`, `linux/arm64`) with pre-bundled `ffmpeg` and `ffprobe` is published on GitHub Container Registry: `ghcr.io/ugoteuliere/rename`.
 
----
+### Volumes & Permissions
+* `/config`: Directory containing `config.ini`, `custom_tags.json`, and `gemini_tags.json`.
+* `/data`: Root media storage containing incoming downloads and destination libraries.
+* `PUID` / `PGID`: Set to your host user and group IDs (e.g. `1000:1000` or NAS `99:100`) so processed files are owned by your host user.
 
-### Google Gemini
-* **Model**: `gemini-3.5-flash-lite` (with fallbacks `gemini-2.5-flash-lite`, `gemini-2.5-flash`).
-* **Free Quota**: 15 requests/minute, 1,500 requests/day.
-* **Setup**:
-  1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey).
-  2. Click **Get API key** > **Create API key**.
-  3. Copy your key (`AIzaSy...`) and configure it:
-     ```bash
-     python main.py config --set api.gemini_api_key "<your_gemini_key>"
-     ```
+### Docker Run (CLI)
 
----
+```bash
+# Autonomous background watcher
+docker run -d \
+  --name media-organizer \
+  --restart unless-stopped \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  -e TMDB_API_KEY="your_tmdb_key" \
+  -v /path/to/config:/config \
+  -v /path/to/media:/data \
+  ghcr.io/ugoteuliere/rename:latest --autonomous --interval 15
 
-### Groq Cloud
-* **Models**: `openai/gpt-oss-20b`, `llama-3.3-70b-versatile`, `openai/gpt-oss-120b`.
-* **Free Quota**: 30 requests/minute, 14,400 requests/day (~0.03s latency).
-* **Setup**:
-  1. Visit [Groq Cloud Console](https://console.groq.com/keys).
-  2. Sign in and click **Create API Key**.
-  3. Copy your key (`gsk_...`) and configure it:
-     ```bash
-     python main.py config --set api.groq_api_key "<your_groq_key>"
-     ```
+# One-off dry-run simulation
+docker run --rm \
+  -v /path/to/config:/config \
+  -v /path/to/media:/data \
+  ghcr.io/ugoteuliere/rename:latest --simulate
+```
 
----
+### Docker Compose
 
-### OpenRouter
-* **Models**: Free tier models (`liquid/lfm-2.5-2.6b:free`, `google/gemma-4-26b-a4b-it:free`, `meta-llama/llama-3.3-70b-instruct:free`).
-* **Cost**: $0.00 (setting a credit limit of $0 ensures you are never charged).
-* **Free Quota**: ~20 requests/minute, ~200 requests/day without credits.
-* **Setup**:
-  1. Visit [OpenRouter](https://openrouter.ai/settings/keys).
-  2. Click **Create Key**, set credit limit to `$0.00`.
-  3. Copy your key (`sk-or-v1-...`) and configure it:
-     ```bash
-     python main.py config --set api.openrouter_api_key "<your_openrouter_key>"
-     ```
+```yaml
+version: "3.8"
 
----
-
-### Cloudflare Workers AI
-* **Model**: `@cf/meta/llama-3.1-8b-instruct`.
-* **Free Quota**: 10,000 free Neurons per day (~2,000 to 10,000 requests/day at $0 cost).
-* **Setup**:
-  1. Open [Cloudflare Dashboard](https://dash.cloudflare.com/).
-  2. Copy your 32-character **Account ID** from the right sidebar.
-  3. Go to **My Profile** > **API Tokens** > **Create Token**.
-  4. Select **Workers AI** permissions (`Account > Workers AI > Edit`).
-  5. Click **Create Token** and copy the generated token (`cfut_...`).
-  6. Configure both values:
-     ```bash
-     python main.py config --set api.cloudflare_account_id "<account_id>"
-     python main.py config --set api.cloudflare_api_token "<api_token>"
-     ```
-
----
-
-## 8. Keyword & Tag Management
-
-The cleaning engine uses a 3-tier dictionary to strip release tags:
-1. **Shipped Scene Tags (`data/tags.json`)**: Default scene tags, audio formats, codecs, and languages.
-2. **User Custom Tags (`custom_tags.json`)**: Stored in your configuration folder alongside `config.ini` for private release groups or tracker names:
-   ```json
-   {
-     "tags": ["private_tracker", "custom_group"]
-   }
-   ```
-3. **AI Learned Tags (`gemini_tags.json`)**: When keyword learning is enabled (`-L` or `options.learn = true`), missing release tags discovered by AI are validated and appended to `gemini_tags.json`.
-
----
-
-## 9. Email Alerts & System Setup
-
-### Gmail SMTP Setup
-1. Enable **2-Step Verification** on your [Google Account](https://myaccount.google.com/security).
-2. Generate a 16-character **App Password** under Account Security > App Passwords.
-3. Configure credentials:
-   ```bash
-   python main.py config --set mail.mail "your_email@gmail.com"
-   python main.py config --set mail.mail_pswd "your_16_char_password"
-   ```
-
-### FFmpeg / ffprobe Setup
-Required only if resolution (`options.resolution`) or quality (`options.quality`) detection is enabled:
-* **Windows**: `winget install ffmpeg`
-* **macOS**: `brew install ffmpeg`
-* **Linux**: `sudo apt install ffmpeg`
+services:
+  media-organizer:
+    image: ghcr.io/ugoteuliere/rename:latest
+    container_name: media-organizer
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TMDB_API_KEY=your_tmdb_api_key
+      # Optional AI keys
+      - GEMINI_API_KEY=your_gemini_key
+    volumes:
+      - /path/to/config:/config
+      - /path/to/media:/data
+    command: ["--autonomous", "--interval", "15"]
+```

@@ -1,4 +1,4 @@
-name: Build and Release Standalone Executables
+name: Build and Release Standalone Executables & Docker Image
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build:
@@ -45,15 +46,19 @@ jobs:
       - name: Test Executable (${{ matrix.os }})
         shell: bash
         run: |
+          mkdir -p test_ci_media
+          touch "test_ci_media/Arrival (2016).mkv"
           if [ "$RUNNER_OS" = "Windows" ]; then
             echo "Smoke testing Windows binary..."
             ./dist/media-organizer.exe --help
             ./dist/media-organizer.exe config --list
+            ./dist/media-organizer.exe --simulate --only-rename --bypass --path "test_ci_media"
           else
             echo "Smoke testing Unix binary..."
             chmod +x ./dist/media-organizer
             ./dist/media-organizer --help
             ./dist/media-organizer config --list
+            ./dist/media-organizer --simulate --only-rename --bypass --path "test_ci_media"
           fi
 
       - name: Package Windows Artifacts
@@ -96,9 +101,52 @@ jobs:
           if-no-files-found: error
           retention-days: 2
 
+  release-docker:
+    name: Build & Publish Multi-Arch Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and push multi-arch Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
   publish:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, release-docker]
     runs-on: ubuntu-latest
 
     steps:
@@ -128,3 +176,4 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: false
+

@@ -2,19 +2,31 @@
 __pycache__/
 *.py[cod]
 *$py.class
-tests/__pycache__/
-.pytest_cache/
+*.so
 
-# PyInstaller build artifacts
+# Testing, typing & linter caches
+.pytest_cache/
+*/.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build & packaging artifacts (PyInstaller, wheel, setuptools)
 build/
 dist/
+release-assets/
+*.egg-info/
+*.egg
+.eggs/
+*.spec.bak
 
-# Testing & Coverage
+# Testing, code coverage & analysis reports
 .coverage
 .coverage.*
 coverage.xml
 htmlcov/
 nosetests.xml
+.scannerwork/
+.sonarqube/
 
 # Virtual environments
 env/
@@ -22,17 +34,36 @@ venv/
 .env/
 .venv/
 ENV/
+env.bak/
+venv.bak/
 
 # Configuration files & secrets
 config.ini
 .rename.ini
 *.ini
+!pytest.ini
+.env
+.env.*
 
 # Application logs
 log/
 *.log
 
-# Operating System artifacts
+# Dynamic keywords & learned tags (data/tags.json remains tracked)
+custom_tags.json
+gemini_tags.json
+
+# Temporary test directories & scratch files
+test_ci_media/
+test_media*/
+scratch/
+*.tmp
+*.bak
+
+# Docker local overrides
+docker-compose.override.yml
+
+# Operating system artifacts
 .DS_Store
 .DS_Store?
 ._*
@@ -42,22 +73,10 @@ ehthumbs.db
 Thumbs.db
 desktop.ini
 
-# Local tag overrides & learned tags (shipped data/tags.json remains tracked)
-custom_tags.json
-gemini_tags.json
-
-# Python distribution & packaging
-*.egg-info/
-*.egg
-.eggs/
-
-# Temporary & backup files
-*.tmp
-*.bak
-scratch/
-
 # IDE & Editor settings
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
+*.code-workspace

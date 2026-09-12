@@ -2,13 +2,12 @@ import sys
 import os
 import shutil
 
-if sys.platform == "win32":
-    if hasattr(sys.stdout, "reconfigure"):
-        try:
-            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError, OSError):
+        pass
 
 from rich.console import Console
 from rich.table import Table
@@ -289,8 +288,7 @@ def handle_config_command(args):
         elif getattr(args, "video", None) is True:
             section = "video"
         
-        run_full = getattr(args, "full", None) is True
-        config.run_wizard(section=section, interactive_menu=(not run_full and section is None))
+        config.run_wizard(section=section, interactive_menu=False)
         return
 
     if getattr(args, "path", False):
