@@ -353,6 +353,16 @@ def test_resolve_config_path_variations(tmp_path, monkeypatch):
             mock_p.home.assert_called_once()
 
 
+def test_config_save_quarantine_guard(tmp_path):
+    cm = ConfigManager(custom_path=str(tmp_path / "custom.ini"))
+    real_user_path = (cm._get_default_user_dir() / "config.ini").resolve()
+    cm.config_path = real_user_path
+
+    # Verify that calling save() reroutes to quarantine instead of writing to real user config
+    cm.save()
+    assert "pytest_rename_quarantine" in str(cm.config_path)
+
+
 def test_config_property_setters_and_string_getters(tmp_path):
     test_ini = tmp_path / "props.ini"
     cm = ConfigManager(custom_path=str(test_ini))

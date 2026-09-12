@@ -124,26 +124,32 @@ class ConfigManager:
         if local_config_ini.is_file():
             return local_config_ini
 
-        # Quarantine safeguard: Never touch real user configuration during automated pytest runs
-        if "PYTEST_CURRENT_TEST" in os.environ:
+        # Quarantine safeguard: Never touch real user configuration during automated pytest runs or scratch scripts
+        script_name = str(sys.argv[0]).lower() if sys.argv else ""
+        in_quarantine_mode = (
+            "PYTEST_CURRENT_TEST" in os.environ
+            or "PYTEST_VERSION" in os.environ
+            or "scratch" in script_name
+        )
+        if in_quarantine_mode and not os.environ.get("RENAME_TEST_ALLOW_REAL_PATH"):
             base_dir = Path(tempfile.gettempdir()) / "pytest_rename_quarantine"
             return (base_dir / "config.ini").resolve()
 
         # Standard user config directory
+        base_dir = self._get_default_user_dir()
+        return (base_dir / "config.ini").resolve()
+
+    @staticmethod
+    def _get_default_user_dir() -> Path:
         if os.name == 'nt':
             appdata = os.environ.get('APPDATA')
             if appdata:
-                base_dir = Path(appdata) / "rename"
-            else:
-                base_dir = Path.home() / ".config" / "rename"
-        else:
-            xdg = os.environ.get('XDG_CONFIG_HOME')
-            if xdg:
-                base_dir = Path(xdg) / "rename"
-            else:
-                base_dir = Path.home() / ".config" / "rename"
-
-        return (base_dir / "config.ini").resolve()
+                return Path(appdata) / "rename"
+            return Path.home() / ".config" / "rename"
+        xdg = os.environ.get('XDG_CONFIG_HOME')
+        if xdg:
+            return Path(xdg) / "rename"
+        return Path.home() / ".config" / "rename"
 
     def load(self):
         self.parser = configparser.ConfigParser()
@@ -152,6 +158,23 @@ class ConfigManager:
 
     def save(self):
         """Atomic write using temporary file to prevent corruption."""
+        # Absolute safety check: Never overwrite the user's real config file in test/scratch contexts
+        is_test = (
+            "pytest" in sys.modules
+            or "PYTEST_CURRENT_TEST" in os.environ
+            or "PYTEST_VERSION" in os.environ
+            or "scratch" in (sys.argv[0].lower() if sys.argv else "")
+        )
+        if is_test and not os.environ.get("RENAME_ALLOW_REAL_CONFIG_SAVE"):
+            try:
+                real_user_file = (self._get_default_user_dir() / "config.ini").resolve()
+                if self.config_path.resolve() == real_user_file:
+                    quarantine_dir = Path(tempfile.gettempdir()) / "pytest_rename_quarantine"
+                    quarantine_dir.mkdir(parents=True, exist_ok=True)
+                    self.config_path = (quarantine_dir / "config.ini").resolve()
+            except Exception:
+                pass
+
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         dir_to_use = self.config_path.parent
         
@@ -466,9 +489,8 @@ class ConfigManager:
             console.print("[dim]Installation guide: docs/documentation.md#ffmpeg-setup[/dim]")
 
     def run_wizard(self, section: Optional[str] = None, interactive_menu: bool = False):
-        """Interactive terminal configuration wizard with modular menus and direct section access."""
+        """Interactive terminal configuration wizard that guides the user through setup steps."""
         from rich.console import Console
-        from rich.prompt import Prompt
 
         console = Console()
         console.print("\n[bold cyan]==============================================[/bold cyan]")
@@ -476,41 +498,7 @@ class ConfigManager:
         console.print("[bold cyan]==============================================[/bold cyan]\n")
         console.print(f"Target Configuration File: [yellow]{self.config_path}[/yellow]\n")
 
-        if interactive_menu and section is None:
-            console.print("[bold]Select configuration category:[/bold]")
-            console.print("  [cyan]1.[/cyan] 📂 Folders & Storage Paths")
-            console.print("  [cyan]2.[/cyan] 🔑 API Keys & Cloud AI Providers")
-            console.print("  [cyan]3.[/cyan] 📧 Email Alerts & Notifications")
-            console.print("  [cyan]4.[/cyan] ⚙️ Automation & Runtime Options")
-            console.print("  [cyan]5.[/cyan] 🎞️ Video Stream Options (FFmpeg)")
-            console.print("  [cyan]6.[/cyan] 🚀 Run Full Setup Wizard (all categories)")
-            console.print("  [cyan]7.[/cyan] 🖥️ Launch Graphical Configuration Tool (GUI)")
-            console.print("  [cyan]8.[/cyan] ❌ Exit\n")
-
-            choice = Prompt.ask("Enter choice", choices=["1", "2", "3", "4", "5", "6", "7", "8"], default="6")
-            if choice == "1":
-                self.wizard_paths(console)
-            elif choice == "2":
-                self.wizard_api(console)
-            elif choice == "3":
-                self.wizard_email(console)
-            elif choice == "4":
-                self.wizard_options(console)
-            elif choice == "5":
-                self.wizard_video(console)
-            elif choice == "6":
-                self.wizard_paths(console)
-                self.wizard_api(console)
-                self.wizard_email(console)
-                self.wizard_options(console)
-                self.wizard_video(console)
-            elif choice == "7":
-                self.run_gui()
-                return
-            elif choice == "8":
-                console.print("[dim]Setup wizard closed.[/dim]\n")
-                return
-        elif section == "paths":
+        if section == "paths":
             self.wizard_paths(console)
         elif section == "ai":
             self.wizard_api(console)
@@ -521,7 +509,6 @@ class ConfigManager:
         elif section == "video":
             self.wizard_video(console)
         else:
-            # Full wizard (default when not interactive_menu)
             console.print("Press [green]Enter[/green] to keep current value.\n")
             self.wizard_paths(console)
             self.wizard_api(console)

@@ -289,8 +289,7 @@ def handle_config_command(args):
         elif getattr(args, "video", None) is True:
             section = "video"
         
-        run_full = getattr(args, "full", None) is True
-        config.run_wizard(section=section, interactive_menu=(not run_full and section is None))
+        config.run_wizard(section=section, interactive_menu=False)
         return
 
     if getattr(args, "path", False):

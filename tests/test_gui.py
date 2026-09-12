@@ -460,52 +460,14 @@ def test_config_run_wizard_menu_options(tmp_path):
     orig_isdir = os.path.isdir
     mock_isdir = lambda p: True if "D:/" in str(p) else orig_isdir(p)
 
-    # Test menu choices:
-    # 1: paths
-    with patch("rich.prompt.Prompt.ask", side_effect=["1", "D:/P1", "D:/P2", "D:/P3"]), \
-         patch("os.path.isdir", side_effect=mock_isdir):
-        cm.run_wizard(interactive_menu=True)
-        assert cm.get("paths.movies_folder") == "D:/P1"
-
-    # 2: api
-    with patch("rich.prompt.Prompt.ask", side_effect=["2", "tmdb", "gemini", "groq", "openrouter", "cf_tok", "cf_acc"]):
-        cm.run_wizard(interactive_menu=True)
-        assert cm.get("api.tmdb_api_key") == "tmdb"
-
-    # 3: email
-    with patch("rich.prompt.Prompt.ask", side_effect=["3", "mail@test.com", "pswd123"]):
-        cm.run_wizard(interactive_menu=True)
-        assert cm.get("mail.mail") == "mail@test.com"
-
-    # 4: options
-    with patch("rich.prompt.Prompt.ask", side_effect=["4", "15", "groq"]), \
-         patch("rich.prompt.Confirm.ask", side_effect=[True, True, True, True, True, True, True, True, True]):
-        cm.run_wizard(interactive_menu=True)
-        assert cm.get("options.ai_provider") == "groq"
-
-    # 5: video
-    with patch("rich.prompt.Prompt.ask", return_value="5"), \
-         patch("rich.prompt.Confirm.ask", side_effect=[True, True]), \
-         patch("shutil.which", return_value="ffprobe"):
-        cm.run_wizard(interactive_menu=True)
-        assert cm.get("options.resolution") is True
-
-    # 6: full setup
-    with patch("rich.prompt.Prompt.ask", side_effect=["6", "D:/F1", "D:/F2", "D:/F3", "k1", "k2", "k3", "k4", "k5", "k6", "m", "p", "15", "auto"]), \
+    # Full setup wizard (runs all steps sequentially without category menu)
+    with patch("rich.prompt.Prompt.ask", side_effect=["D:/F1", "D:/F2", "D:/F3", "k1", "k2", "k3", "k4", "k5", "k6", "m", "p", "15", "auto"]), \
          patch("rich.prompt.Confirm.ask", side_effect=[False]*9 + [False, False]), \
          patch("os.path.isdir", side_effect=mock_isdir):
         cm.run_wizard(interactive_menu=True)
         assert cm.get("paths.movies_folder") == "D:/F1"
-
-    # 7: GUI
-    with patch("rich.prompt.Prompt.ask", return_value="7"), \
-         patch.object(cm, "run_gui") as mock_gui:
-        cm.run_wizard(interactive_menu=True)
-        mock_gui.assert_called_once()
-
-    # 8: Exit
-    with patch("rich.prompt.Prompt.ask", return_value="8"):
-        cm.run_wizard(interactive_menu=True)
+        assert cm.get("api.tmdb_api_key") == "k1"
+        assert cm.get("mail.mail") == "m"
 
     # Section direct calls
     with patch.object(cm, "wizard_paths") as mock_p:
