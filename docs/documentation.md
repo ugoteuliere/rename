@@ -21,6 +21,10 @@ Technical guide and reference for the Media Organizer & Renamer.
    - [Metadata Extraction Pipeline](#metadata-extraction-pipeline)
    - [TMDB Match Probability Scorer](#tmdb-match-probability-scorer)
 6. [Keyword Management](#6-keyword-management)
+7. [Docker Deployment](#7-docker-deployment)
+   - [Volumes & Permissions](#volumes--permissions)
+   - [Docker Run (CLI)](#docker-run-cli)
+   - [Docker Compose](#docker-compose)
 
 
 
@@ -217,3 +221,55 @@ The cleaning engine uses a dictionary to strip filenames:
 1. **Default Keywords (`data/tags.json`)**: Default keywords shipped with the application.
 2. **User Custom Keywords (`custom_tags.json`)**: User's personal keywords stored in the configuration folder alongside `config.ini`.
 3. **AI Learned Keywords (`gemini_tags.json`)**: When keyword learning is enabled (`-L` or `options.learn = true`), missing keywords discovered by AI are validated and appended to `gemini_tags.json`.
+
+## 7. Docker Deployment
+
+A multi-architecture Docker image (`linux/amd64`, `linux/arm64`) with pre-bundled `ffmpeg` and `ffprobe` is published on GitHub Container Registry: `ghcr.io/ugoteuliere/rename`.
+
+### Volumes & Permissions
+* `/config`: Directory containing `config.ini`, `custom_tags.json`, and `gemini_tags.json`.
+* `/data`: Root media storage containing incoming downloads and destination libraries.
+* `PUID` / `PGID`: Set to your host user and group IDs (e.g. `1000:1000` or NAS `99:100`) so processed files are owned by your host user.
+
+### Docker Run (CLI)
+
+```bash
+# Autonomous background watcher
+docker run -d \
+  --name media-organizer \
+  --restart unless-stopped \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  -e TMDB_API_KEY="your_tmdb_key" \
+  -v /path/to/config:/config \
+  -v /path/to/media:/data \
+  ghcr.io/ugoteuliere/rename:latest --autonomous --interval 15
+
+# One-off dry-run simulation
+docker run --rm \
+  -v /path/to/config:/config \
+  -v /path/to/media:/data \
+  ghcr.io/ugoteuliere/rename:latest --simulate
+```
+
+### Docker Compose
+
+```yaml
+version: "3.8"
+
+services:
+  media-organizer:
+    image: ghcr.io/ugoteuliere/rename:latest
+    container_name: media-organizer
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TMDB_API_KEY=your_tmdb_api_key
+      # Optional AI keys
+      - GEMINI_API_KEY=your_gemini_key
+    volumes:
+      - /path/to/config:/config
+      - /path/to/media:/data
+    command: ["--autonomous", "--interval", "15"]
+```
