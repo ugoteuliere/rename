@@ -549,7 +549,7 @@ def test_remove_empty_folders_success(tmp_path):
     assert target_path.exists()
 
 
-def test_remove_empty_folders_raises_runtime_error(tmp_path):
+def test_remove_empty_folders_logs_warning_on_os_error(tmp_path):
     # 1. SETUP
     target_path = tmp_path / "main"
     target_path.mkdir()
@@ -557,19 +557,17 @@ def test_remove_empty_folders_raises_runtime_error(tmp_path):
     empty_dir.mkdir()
     
     # 2. ACTION & VERIFY
-    # We force the built-in os.rmdir to fail with a fake OS error
-    with patch('src.ui.VERBOSE_ENABLED', True):
-        with patch('os.rmdir', side_effect=OSError("Folder is locked by another process")):
-            
-            # We expect your custom RuntimeError to be raised
-            with pytest.raises(RuntimeError) as exc_info:
-                files.remove_empty_folders(str(target_path))
-                
-    # 3. VERIFY ERROR MESSAGE
-    error_msg = str(exc_info.value)
-    assert "An error occurred while deleting" in error_msg
-    assert str(empty_dir) in error_msg
-    assert "Folder is locked" in error_msg
+    # When os.rmdir fails with OSError (e.g. Device busy or locked folder), logs warning and does not crash
+    with patch('src.ui.VERBOSE_ENABLED', True), \
+         patch('os.rmdir', side_effect=OSError("Folder is locked by another process")), \
+         patch('src.ui.print_log') as mock_log:
+        files.remove_empty_folders(str(target_path))
+        
+    warning_logs = [str(call[0][0]) for call in mock_log.call_args_list if "Warning" in str(call[0][0])]
+    assert len(warning_logs) > 0
+    assert "Could not delete empty folder" in warning_logs[0]
+    assert str(empty_dir) in warning_logs[0]
+    assert "Folder is locked by another process" in warning_logs[0]
 
 
 @patch('src.files.remove_empty_folders')
@@ -1228,7 +1226,12 @@ def test_parse_arguments_conflicts(monkeypatch):
 
 def test_parse_arguments_missing_keys(monkeypatch):
     monkeypatch.setattr(ui, "GEMINI_API_KEY", None)
-    monkeypatch.setattr(sys, "argv", ["main.py", "-i"])
+    monkeypatch.setattr(ui.config, "GEMINI_API_KEY", None)
+    monkeypatch.setattr(ui.config, "GROQ_API_KEY", None)
+    monkeypatch.setattr(ui.config, "OPENROUTER_API_KEY", None)
+    monkeypatch.setattr(ui.config, "CLOUDFLARE_API_TOKEN", None)
+    monkeypatch.setattr(ui.config, "CLOUDFLARE_ACCOUNT_ID", None)
+    monkeypatch.setattr(sys, "argv", ["main.py", "-a"])
     with pytest.raises(SystemExit):
         ui.parse_arguments()
 
@@ -1273,6 +1276,7 @@ def test_ui_display_tables_smoke(monkeypatch):
 
 def test_api_call_missing_key_exits(monkeypatch):
     monkeypatch.setattr(api, "TMDB_API_KEY", None)
+    monkeypatch.setattr(api.config, "TMDB_API_KEY", None)
     with pytest.raises(SystemExit) as exc:
         api.api_call("Inception", "2010", "en-US", "movie")
     assert exc.value.code == 1
@@ -1295,6 +1299,7 @@ def test_api_call_http_errors_and_empty_results(mock_get):
 
 def test_gemini_api_call_missing_key(monkeypatch):
     monkeypatch.setattr(api, "GEMINI_API_KEY", None)
+    monkeypatch.setattr(api.config, "GEMINI_API_KEY", None)
     dummy_info = {
         'File': 'test.mkv',
         'Folder': 'downloads',
@@ -1708,12 +1713,12 @@ def test_config_manager_file_resolution(tmp_path, monkeypatch):
     cm_custom = ConfigManager(custom_path=str(custom_ini))
     assert cm_custom.config_path == custom_ini
 
-    # 2. Environment variable RENAME_CONFIG_FILE
+    # 2. Environment variable CONFIG_FILE
     env_ini = tmp_path / "env_config.ini"
-    monkeypatch.setenv("RENAME_CONFIG_FILE", str(env_ini))
+    monkeypatch.setenv("CONFIG_FILE", str(env_ini))
     cm_env = ConfigManager()
     assert cm_env.config_path == env_ini
-    monkeypatch.delenv("RENAME_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("CONFIG_FILE", raising=False)
 
     # 3. Local override .rename.ini in cwd
     local_ini = tmp_path / ".rename.ini"
@@ -1730,35 +1735,35 @@ def test_config_manager_env_precedence(tmp_path, monkeypatch):
     assert cm.get("paths.movies_folder") == "D:/IniMovies"
 
     # Environment variable should override INI
-    monkeypatch.setenv("RENAME_MOVIES_FOLDER", "E:/EnvMovies")
+    monkeypatch.setenv("MOVIES_FOLDER", "E:/EnvMovies")
     assert cm.get("paths.movies_folder") == "E:/EnvMovies"
     val, source = cm.get_with_source("paths.movies_folder")
     assert val == "E:/EnvMovies"
     assert source == "ENV"
 
     # Boolean environment variables
-    monkeypatch.setenv("RENAME_RESOLUTION", "1")
+    monkeypatch.setenv("RESOLUTION", "1")
     assert cm.get("options.resolution") is True
-    monkeypatch.setenv("RENAME_RESOLUTION", "false")
+    monkeypatch.setenv("RESOLUTION", "false")
     assert cm.get("options.resolution") is False
 
-    # Test RENAME_LEARN
-    monkeypatch.setenv("RENAME_LEARN", "1")
+    # Test LEARN
+    monkeypatch.setenv("LEARN", "1")
     assert cm.get("options.learn") is True
     assert cm.LEARN is True
-    monkeypatch.setenv("RENAME_LEARN", "0")
+    monkeypatch.setenv("LEARN", "0")
     assert cm.get("options.learn") is False
     assert cm.LEARN is False
-    monkeypatch.delenv("RENAME_LEARN")
+    monkeypatch.delenv("LEARN")
 
-    # Test RENAME_NOTIFY_ON_TAG
-    monkeypatch.setenv("RENAME_NOTIFY_ON_TAG", "1")
+    # Test NOTIFY_ON_TAG
+    monkeypatch.setenv("NOTIFY_ON_TAG", "1")
     assert cm.get("options.notify_on_tag") is True
     assert cm.NOTIFY_ON_TAG is True
-    monkeypatch.setenv("RENAME_NOTIFY_ON_TAG", "0")
+    monkeypatch.setenv("NOTIFY_ON_TAG", "0")
     assert cm.get("options.notify_on_tag") is False
     assert cm.NOTIFY_ON_TAG is False
-    monkeypatch.delenv("RENAME_NOTIFY_ON_TAG")
+    monkeypatch.delenv("NOTIFY_ON_TAG")
 
 
 def test_config_manager_get_set_unset(tmp_path):
@@ -1841,7 +1846,7 @@ def test_config_wizard_mocked(tmp_path, monkeypatch):
         "15",                   # polling interval
         "groq",                 # ai provider
     ]):
-        with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, True, False, False, False, True, True, True, False]): # bypass, autonomous, ai, learn, log, verbose, notify_success, notify_error, notify_tag, res, qual
+        with patch("rich.prompt.Confirm.ask", side_effect=[False, False, False, True, False, False, False, True, True, True, False]): # bypass, daemon, ai, learn, log, verbose, notify_success, notify_error, notify_tag, res, qual
             cm.run_wizard()
 
     assert cm.get("paths.movies_folder") == "D:/WizardMovies"
@@ -1861,7 +1866,8 @@ def test_config_wizard_mocked(tmp_path, monkeypatch):
     assert cm.get("options.notify_on_tag") is True
     assert cm.NOTIFY_ON_TAG is True
     assert cm.get("options.bypass") is False
-    assert cm.get("options.autonomous") is False
+    assert cm.get("options.daemon") is False
+    assert cm.DAEMON is False
     assert cm.get("options.polling_interval") == "15"
     assert cm.POLLING_INTERVAL == 15
     assert cm.get("options.ai") is False
@@ -1875,7 +1881,7 @@ def test_config_wizard_mocked(tmp_path, monkeypatch):
 
 def test_cli_config_commands(tmp_path, monkeypatch):
     test_ini = tmp_path / "cli_test.ini"
-    monkeypatch.setenv("RENAME_CONFIG_FILE", str(test_ini))
+    monkeypatch.setenv("CONFIG_FILE", str(test_ini))
 
     import main
     from unittest.mock import MagicMock
@@ -1913,9 +1919,9 @@ def test_actionable_error_messages(tmp_path, monkeypatch, capsys):
     with patch("src.ui.print_log") as mock_log:
         with pytest.raises(SystemExit):
             utils.verify_folders()
-        logged = mock_log.call_args[0][0]
-        assert "paths.movies_folder" in logged
-        assert "configure" in logged
+        all_logged = " ".join(str(c[0][0]) for c in mock_log.call_args_list if c[0])
+        assert "paths.movies_folder" in all_logged
+        assert "configure" in all_logged
 
     # 2. verify_folders() with non-existent directory on disk shows tips
     monkeypatch.setattr(utils, "MOVIES_FOLDER", str(tmp_path / "does_not_exist_xyz"))
@@ -1924,26 +1930,28 @@ def test_actionable_error_messages(tmp_path, monkeypatch, capsys):
     with patch("src.ui.print_log") as mock_log:
         with pytest.raises(SystemExit):
             utils.verify_folders()
-        logged = mock_log.call_args[0][0]
-        assert "Missing required folder(s) on disk" in logged
+        all_logged = " ".join(str(c[0][0]) for c in mock_log.call_args_list if c[0])
+        assert "Missing required folder(s) on disk" in all_logged
 
     # 3. api.api_call() with missing TMDB key shows tips
     monkeypatch.setattr(api, "TMDB_API_KEY", None)
+    monkeypatch.setattr(api.config, "TMDB_API_KEY", None)
     with patch("src.api.print_log") as mock_log:
         with pytest.raises(SystemExit):
             api.api_call("Inception", "2010", "en-US", "movie")
-        logged = mock_log.call_args[0][0]
-        assert "api.tmdb_api_key" in logged
-        assert "configure" in logged
+        all_logged = " ".join(str(c[0][0]) for c in mock_log.call_args_list if c[0])
+        assert "api.tmdb_api_key" in all_logged
+        assert "configure" in all_logged
 
     # 4. api.gemini_api_call() with missing Gemini key shows tips
     monkeypatch.setattr(api, "GEMINI_API_KEY", None)
+    monkeypatch.setattr(api.config, "GEMINI_API_KEY", None)
     with patch("src.api.print_log") as mock_log:
         with pytest.raises(SystemExit):
             api.gemini_api_call({'File': 't.mkv', 'Folder': 'd', 'Path': '/d/t.mkv', 'Clean': 't', 'Parse': 't', 'Media': 'movie'})
-        logged = mock_log.call_args[0][0]
-        assert "api.gemini_api_key" in logged
-        assert "configure" in logged
+        all_logged = " ".join(str(c[0][0]) for c in mock_log.call_args_list if c[0])
+        assert "api.gemini_api_key" in all_logged
+        assert "configure" in all_logged
 
 
 def test_config_validation_messages(tmp_path, monkeypatch):
@@ -2178,7 +2186,7 @@ def test_process_media_clean_file_only_rename_mode(tmp_path, monkeypatch):
     with patch("src.files.get_file_quality_resolution", return_value=("1080p", "BluRay")), \
          patch("src.ui.user_confirmation"), \
          patch("src.mail.send_media_success_email") as mock_mail:
-        res = main.process_media(args, autonomous=True)
+        res = main.process_media(args, daemon=True)
         assert res == 0
         mock_mail.assert_called_once()
 
@@ -2202,7 +2210,7 @@ def test_process_media_already_clean_file_only_rename_mode(tmp_path, monkeypatch
     args = MagicMock(path=str(downloads), only_rename=True, simulate=False)
 
     with patch("src.ui.print_log") as mock_log:
-        res = main.process_media(args, autonomous=False)
+        res = main.process_media(args, daemon=False)
         assert res == 0
         logged = " ".join([str(c[0][0]) for c in mock_log.call_args_list if c[0]])
         assert "No media files to rename" in logged
@@ -2303,12 +2311,12 @@ def test_process_media_clean_file_simulation_mode(tmp_path, monkeypatch):
         assert "Simulation mode complete" in logged
 
 
-def test_process_media_clean_data_empty_autonomous_logging():
+def test_process_media_clean_data_empty_daemon_logging():
     args = MagicMock(path=None, only_rename=False, simulate=False)
     with patch("src.files.search_media_files", return_value=(pd.DataFrame([{"File": "A.mkv"}]), pd.DataFrame())), \
          patch("src.utils.get_corrected_media_filenames", return_value=pd.DataFrame()), \
          patch("src.ui.print_log") as mock_log:
-        res = main.process_media(args, autonomous=True, cycle=3)
+        res = main.process_media(args, daemon=True, cycle=3)
         assert res == 0
         logged = " ".join([str(c[0][0]) for c in mock_log.call_args_list if c[0]])
         assert "Check 3 : No media to process" in logged

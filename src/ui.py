@@ -1,6 +1,8 @@
+from __future__ import annotations
 import sys
 import os
 import shutil
+import re
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -11,9 +13,11 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from rich.console import Console
 from rich.table import Table
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional, List, Tuple
 from pathlib import Path
 import argparse
+import uuid
 
 from src.config import config
 MOVIES_FOLDER = getattr(config, 'MOVIES_FOLDER', None)
@@ -23,6 +27,7 @@ MAIL = getattr(config, 'MAIL', None)
 MAIL_PSWD = getattr(config, 'MAIL_PSWD', None)
 
 LOG_ENABLED = False
+LOG_MODE = "console"
 MAIL_ENABLED = False
 AI_FALLBACK_ENABLED = False
 LEARN_ENABLED = False
@@ -34,8 +39,9 @@ QUALITY_ENABLED = False
 NOTIFY_SUCCESS_ENABLED = False
 NOTIFY_ERROR_ENABLED = False
 NOTIFY_TAG_ENABLED = False
-AUTONOMOUS_ENABLED = False
+DAEMON_ENABLED = False
 POLLING_INTERVAL = 15
+_last_log_cleanup_date = None
 
 
 def is_double_clicked() -> bool:
@@ -64,29 +70,29 @@ def hide_console_window() -> None:
 
 
 def parse_arguments():
-    global LOG_ENABLED, MAIL_ENABLED, AI_FALLBACK_ENABLED, LEARN_ENABLED, BYPASS_ENABLED, VERBOSE_ENABLED, SIMULATE_ENABLED
+    global LOG_ENABLED, LOG_MODE, MAIL_ENABLED, AI_FALLBACK_ENABLED, LEARN_ENABLED, BYPASS_ENABLED, VERBOSE_ENABLED, SIMULATE_ENABLED
     global RESOLUTION_ENABLED, QUALITY_ENABLED, NOTIFY_SUCCESS_ENABLED, NOTIFY_ERROR_ENABLED, NOTIFY_TAG_ENABLED
-    global AUTONOMOUS_ENABLED, POLLING_INTERVAL
+    global DAEMON_ENABLED, POLLING_INTERVAL
 
     description_text = (
-        "🎬 Media Organizer & Renamer\n"
+        "🎬 media-organizer\n"
         "Automatically parses, renames, and sorts messy video files using TMDB and Multi-Cloud AI (Gemini, Groq, OpenRouter, Cloudflare)."
     )
     
     epilog_text = (
         "Examples:\n"
-        "  python main.py                    (Default: Renames AND moves files)\n"
-        "  python main.py -r                 (Only renames the files in place)\n"
-        "  python main.py -s                 (Simulation mode: preview changes without modifying disk)\n"
-        "  python main.py -a                 (Autonomous mode: continuous background polling)\n"
-        "  python main.py -a --interval 10   (Autonomous mode with 10-minute polling)\n"
-        "  python main.py -L                 (Enables AI keyword learning)\n"
-        "  python main.py -t                 (Sends email notification when an AI keyword is learned)\n"
-        "  python main.py -R -q              (Appends resolution & quality tags)\n"
-        "  python main.py --notify-success   (Sends email notification on success)\n"
-        "  python main.py configure          (Interactive configuration wizard)\n"
-        "  python main.py config --list      (List all configured settings)\n"
-        "  python main.py config --set paths.movies_folder \"D:/Movies\"\n\n"
+        "  media-organizer                    (Default: Renames AND moves files)\n"
+        "  media-organizer -r                 (Only renames the files in place)\n"
+        "  media-organizer -s                 (Simulation mode: preview changes without modifying disk)\n"
+        "  media-organizer -d                 (Daemon mode: continuous background polling)\n"
+        "  media-organizer -d --interval 10   (Daemon mode with 10-minute polling)\n"
+        "  media-organizer -L                 (Enables AI keyword learning)\n"
+        "  media-organizer -t                 (Sends email notification when an AI keyword is learned)\n"
+        "  media-organizer -R -q              (Appends resolution & quality tags)\n"
+        "  media-organizer --notify-success   (Sends email notification on success)\n"
+        "  media-organizer configure          (Interactive configuration wizard)\n"
+        "  media-organizer config --list      (List all configured settings)\n"
+        "  media-organizer config --set paths.movies_folder \"D:/Movies\"\n\n"
         "Documentation & Updates: https://github.com/ugoteuliere/rename"
     )
 
@@ -109,7 +115,7 @@ def parse_arguments():
                             help="Detect and append video resolution tags (e.g. [1080p], [4K]).")
     proc_group.add_argument("-q", "--quality", action="store_true",
                             help="Detect and append video encoding/quality tags (e.g. [FullHD BluRay]).")
-    proc_group.add_argument("-i", "--ai", action="store_true", 
+    proc_group.add_argument("-a", "--ai", action="store_true", 
                             help="Enables the Gemini AI fallback to intelligently parse and correct highly obfuscated filenames.")
     proc_group.add_argument("-L", "--learn", action="store_true",
                             help="Enable AI keyword learning to discover and save missing tags from Gemini.")
@@ -119,10 +125,10 @@ def parse_arguments():
                             help="Target a specific folder as source (overrides downloads folder, or renames in-place with -r).")
 
     auto_group = parser.add_argument_group("Automation & Logging")
-    auto_group.add_argument("-a", "--autonomous", action="store_true",
-                            help="Run continuously in autonomous mode with periodic background polling.")
+    auto_group.add_argument("-d", "--daemon", action="store_true", dest="daemon",
+                            help="Run continuously in background daemon mode with periodic polling.")
     auto_group.add_argument("--interval", type=int, default=None,
-                            help="Polling interval in minutes for autonomous mode (overrides config).")
+                            help="Polling interval in minutes for daemon mode (overrides config).")
     auto_group.add_argument("-b", "--bypass", action="store_true", 
                             help="Bypass user confirmation prompts before renaming or moving files.")
     auto_group.add_argument("-l", "--log", action="store_true", 
@@ -182,7 +188,11 @@ def parse_arguments():
     current_pswd = MAIL_PSWD or getattr(config, 'MAIL_PSWD', None)
     MAIL_ENABLED = bool(current_mail and current_pswd)
 
-    AUTONOMOUS_ENABLED = bool(args.autonomous or (args.interval is not None) or getattr(config, 'AUTONOMOUS', False))
+    is_daemon = bool(
+        (getattr(args, 'daemon', False) or (args.interval is not None) or getattr(config, 'DAEMON', False))
+        and not getattr(args, 'simulate', False)
+    )
+    DAEMON_ENABLED = is_daemon
     if args.interval is not None:
         if args.interval < 1:
             parser.error(
@@ -194,8 +204,25 @@ def parse_arguments():
 
     LEARN_ENABLED = bool(args.learn or getattr(config, 'LEARN', False))
     AI_FALLBACK_ENABLED = bool(args.ai or getattr(config, 'AI', False) or LEARN_ENABLED)
-    BYPASS_ENABLED = bool(args.bypass or getattr(config, 'BYPASS', False) or AUTONOMOUS_ENABLED)
-    LOG_ENABLED = bool(args.log or getattr(config, 'LOG', False) or AUTONOMOUS_ENABLED)
+    BYPASS_ENABLED = bool(args.bypass or getattr(config, 'BYPASS', False) or DAEMON_ENABLED)
+    is_docker = os.environ.get("DOCKER_CONTAINER") == "1" or os.path.exists("/.dockerenv")
+    wants_log = bool(args.log or getattr(config, 'LOG', False))
+    if wants_log:
+        log_dir = get_log_dir()
+        has_perm, reason = check_log_dir_permissions(log_dir)
+        if has_perm:
+            LOG_MODE = "both" if is_docker else "file"
+            LOG_ENABLED = True
+        else:
+            sys.stderr.write(
+                f"\n⚠️ Warning: Log directory '{log_dir}' is not writable ({reason}).\n"
+                "💡 Falling back to console logging (stdout/stderr) only.\n\n"
+            )
+            LOG_MODE = "console"
+            LOG_ENABLED = False
+    else:
+        LOG_MODE = "console"
+        LOG_ENABLED = False
     VERBOSE_ENABLED = bool(args.verbose or getattr(config, 'VERBOSE', False))
     SIMULATE_ENABLED = bool(args.simulate)
     RESOLUTION_ENABLED = bool(args.resolution or getattr(config, 'RESOLUTION', False))
@@ -213,10 +240,10 @@ def parse_arguments():
             "❌ Missing configuration: Email notification flags require 'mail' and 'mail_pswd' to be configured in [mail].\n\n"
             "💡 How to fix:\n"
             "  1. Run the configuration wizard:\n"
-            "     python main.py configure\n"
+            "     media-organizer configure\n"
             "  2. Or set credentials via CLI:\n"
-            "     python main.py config --set mail.mail \"<your_email@gmail.com>\"\n"
-            "     python main.py config --set mail.mail_pswd \"<your_16_char_app_password>\""
+            "     media-organizer config --set mail.mail \"<your_email@gmail.com>\"\n"
+            "     media-organizer config --set mail.mail_pswd \"<your_16_char_app_password>\""
         )
 
     if (args.resolution or args.quality) and not shutil.which("ffprobe"):
@@ -249,16 +276,16 @@ def parse_arguments():
 
         if not available_ai:
             parser.error(
-                "❌ Missing configuration: The '--ai' (-i) and '--learn' (-L) options require an AI Cloud Provider API key to be configured (Gemini, Groq, OpenRouter, or Cloudflare).\n\n"
+                "❌ Missing configuration: The '--ai' (-a) and '--learn' (-L) options require an AI Cloud Provider API key to be configured (Gemini, Groq, OpenRouter, or Cloudflare).\n\n"
                 "💡 How to fix:\n"
                 "  1. Run the configuration wizard:\n"
-                "     python main.py configure\n"
+                "     media-organizer configure\n"
                 "  2. Or set the key via CLI:\n"
-                "     python main.py config --set api.gemini_api_key \"<your_gemini_key>\"\n"
-                "     python main.py config --set api.groq_api_key \"<your_groq_key>\"\n"
+                "     media-organizer config --set api.gemini_api_key \"<your_gemini_key>\"\n"
+                "     media-organizer config --set api.groq_api_key \"<your_groq_key>\"\n"
                 "  3. Or use environment variables:\n"
-                "     export RENAME_GEMINI_API_KEY=\"<your_gemini_key>\"\n"
-                "     export RENAME_GROQ_API_KEY=\"<your_groq_key>\""
+                "     export GEMINI_API_KEY=\"<your_gemini_key>\"\n"
+                "     export GROQ_API_KEY=\"<your_groq_key>\""
             )
 
         if args.provider and args.provider != "auto" and args.provider not in available_ai:
@@ -350,7 +377,7 @@ def display_config_table(show_secrets=False):
     from rich.table import Table
 
     items = config.list_all(show_secrets=show_secrets)
-    table = Table(title="⚙️  [bold cyan]Media Organizer & Renamer Configuration[/bold cyan]", title_justify="left")
+    table = Table(title="⚙️  [bold cyan]media-organizer Configuration[/bold cyan]", title_justify="left")
     table.add_column("Section", style="magenta", no_wrap=True)
     table.add_column("Setting", style="white", no_wrap=True)
     table.add_column("Value", style="green")
@@ -387,16 +414,170 @@ def get_log_dir() -> Path:
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir
 
-def print_log(message):
-    if LOG_ENABLED:
+def cleanup_old_logs(log_dir: Optional[Path] = None, max_age_days: int = 14) -> List[Path]:
+    """Delete log files in log_dir older than max_age_days (default: 14 days / 2 weeks)."""
+    if log_dir is None:
         log_dir = get_log_dir()
-        today = datetime.now().strftime("%Y-%m-%d")
-        path = log_dir / f"{today}.txt"
+    if not log_dir.is_dir():
+        return []
 
-        hour = datetime.now().strftime("%H:%M:%S")
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(f"[{hour}] {str(message)}\n")
+    deleted_files: List[Path] = []
+    cutoff_datetime = datetime.now() - timedelta(days=max_age_days)
+    cutoff_date = cutoff_datetime.date()
+    cutoff_timestamp = cutoff_datetime.timestamp()
+
+    try:
+        entries = list(log_dir.iterdir())
+    except OSError:
+        return []
+
+    for item in entries:
+        try:
+            if not item.is_file():
+                continue
+        except OSError:
+            continue
+
+        if item.suffix.lower() not in (".txt", ".log"):
+            continue
+
+        is_old = False
+        stem_parts = item.stem.split("_")[0]
+        try:
+            file_date = datetime.strptime(stem_parts, "%Y-%m-%d").date()
+            if file_date < cutoff_date:
+                is_old = True
+        except ValueError:
+            try:
+                if item.stat().st_mtime < cutoff_timestamp:
+                    is_old = True
+            except OSError:
+                pass
+
+        if is_old:
+            try:
+                item.unlink(missing_ok=True)
+                deleted_files.append(item)
+            except OSError:
+                pass
+
+    return deleted_files
+
+def check_log_dir_permissions(log_dir: Path) -> Tuple[bool, str]:
+    """Verify read and write permissions on log directory using a probe file."""
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        probe_file = log_dir / f".log_probe_{uuid.uuid4().hex}"
+        with open(probe_file, "w", encoding="utf-8") as f:
+            f.write("probe")
+        probe_file.unlink(missing_ok=True)
+        return (True, "")
+    except OSError as e:
+        return (False, str(e))
+
+def format_daemon_log(level: str, message: str, colorize: bool = False) -> str:
+    """Formats a message for daemon mode: strictly single-line with timestamp and level."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    clean_msg = re.sub(r'\s+', ' ', str(message)).strip()
+    raw = f"{timestamp} [{level}] {clean_msg}"
+    if colorize:
+        if level == "ERROR":
+            return f"\033[31m{raw}\033[0m"
+        if level == "SUCCESS":
+            return f"\033[32m{raw}\033[0m"
+    return raw
+
+def _emit_daemon_log(level: str, message: str, stream=None):
+    """Outputs a single-line formatted log in daemon mode to console stream and log file if enabled."""
+    global _last_log_cleanup_date
+    if stream is None:
+        stream = sys.stderr if level == "ERROR" else sys.stdout
+
+    line = format_daemon_log(level, message, colorize=False)
+    should_write_file = LOG_ENABLED or LOG_MODE in ("file", "both")
+    should_print_console = (not should_write_file) or LOG_MODE == "both"
+
+    if should_write_file:
+        try:
+            log_dir = get_log_dir()
+            today = datetime.now().strftime("%Y-%m-%d")
+            if _last_log_cleanup_date != today:
+                cleanup_old_logs(log_dir, max_age_days=14)
+                _last_log_cleanup_date = today
+            path = log_dir / f"{today}.txt"
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(f"{line}\n")
+        except OSError:
+            pass
+
+    if should_print_console:
+        is_docker = config.is_docker_environment()
+        console_line = format_daemon_log(
+            level,
+            message,
+            colorize=(is_docker or getattr(sys.modules.get("src.ui"), "COLOR_LOGS", False))
+        )
+        stream.write(f"{console_line}\n")
+        stream.flush()
+
+def log_info(message: str):
+    """Logs an operational/informational message (single line to stdout in daemon mode)."""
+    if DAEMON_ENABLED:
+        _emit_daemon_log("INFO", message, stream=sys.stdout)
     else:
+        print_log(message)
+
+def log_error(message: str):
+    """Logs an error message (single line to stderr in daemon mode)."""
+    if DAEMON_ENABLED:
+        _emit_daemon_log("ERROR", message, stream=sys.stderr)
+    else:
+        print_log(message)
+
+def log_success(original_name: str, new_name: str, destination_path: str):
+    """Logs a successful media rename and move operation (single line to stdout in daemon mode)."""
+    msg = f"'{original_name}' -> '{new_name}' (Destination: {destination_path})"
+    if DAEMON_ENABLED:
+        _emit_daemon_log("SUCCESS", msg, stream=sys.stdout)
+    else:
+        print_log(f"✅ {msg}")
+
+def print_log(message):
+    global _last_log_cleanup_date
+    if DAEMON_ENABLED:
+        msg_str = str(message).strip()
+        level = "INFO"
+        if msg_str.startswith("[ERROR]") or "❌" in msg_str or "Error:" in msg_str or "error:" in msg_str:
+            level = "ERROR"
+            msg_str = re.sub(r'^(?:❌\s*|\[ERROR\]\s*)', '', msg_str).strip()
+        elif msg_str.startswith("[SUCCESS]"):
+            level = "SUCCESS"
+            msg_str = re.sub(r'^\[SUCCESS\]\s*', '', msg_str).strip()
+        elif msg_str.startswith("[INFO]"):
+            level = "INFO"
+            msg_str = re.sub(r'^\[INFO\]\s*', '', msg_str).strip()
+        _emit_daemon_log(level, msg_str)
+        return
+
+    should_write_file = LOG_ENABLED or LOG_MODE in ("file", "both")
+    should_print_console = (not should_write_file) or LOG_MODE == "both"
+
+    if should_write_file:
+        try:
+            log_dir = get_log_dir()
+            today = datetime.now().strftime("%Y-%m-%d")
+            if _last_log_cleanup_date != today:
+                cleanup_old_logs(log_dir, max_age_days=14)
+                _last_log_cleanup_date = today
+            path = log_dir / f"{today}.txt"
+
+            hour = datetime.now().strftime("%H:%M:%S")
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(f"[{hour}] {str(message)}\n")
+        except OSError:
+            pass
+
+    if should_print_console:
         print(message)
 
 def print_error(message, logs):
@@ -406,15 +587,35 @@ def print_error(message, logs):
         return f"\n {message} \n"
 
 def rich_print_log(*args, **kwargs):
-    if LOG_ENABLED:
+    global LOG_MODE
+    if DAEMON_ENABLED:
+        console_capture = Console(force_terminal=False, no_color=True, width=150)
+        with console_capture.capture() as capture:
+            console_capture.print(*args, **kwargs)
+        raw_text = " ".join(capture.get().strip().splitlines())
+        if raw_text:
+            _emit_daemon_log("INFO", raw_text)
+        return
+
+    should_write_file = LOG_ENABLED or LOG_MODE in ("file", "both")
+    should_print_console = (not should_write_file) or LOG_MODE == "both"
+
+    if should_write_file:
         console_capture = Console(force_terminal=False, no_color=True, width=150)
         with console_capture.capture() as capture:
             console_capture.print(*args, **kwargs)
             
         raw_text = capture.get()
         if raw_text.strip():
-            print_log("\n" + raw_text.rstrip("\n"))
-    else:
+            saved_mode = LOG_MODE
+            try:
+                if LOG_MODE == "both":
+                    LOG_MODE = "file"
+                print_log("\n" + raw_text.rstrip("\n"))
+            finally:
+                LOG_MODE = saved_mode
+
+    if should_print_console:
         console = Console()
         console.print(*args, **kwargs)
 
@@ -523,6 +724,13 @@ def display_sorted_files(paths):
 
 def display_skipped_filenames(failed_files):
     if not failed_files:
+        return
+
+    if DAEMON_ENABLED:
+        for fail in failed_files:
+            orig = str(fail.get('Original', 'Unknown'))
+            reason = str(fail.get('Reason', 'No reason provided'))
+            log_error(f"Skipped file '{orig}': {reason}")
         return
 
     rich_print_log()
